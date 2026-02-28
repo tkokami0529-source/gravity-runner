@@ -4,16 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Gravity Runner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    background: #0a0a1a;
+    background: #060612;
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100vh;
     overflow: hidden;
     touch-action: manipulation;
+    font-family: 'Press Start 2P', monospace;
   }
   #gameContainer {
     position: relative;
@@ -24,7 +27,8 @@
     width: 100%;
     height: auto;
     display: block;
-    border-radius: 4px;
+    border-radius: 6px;
+    box-shadow: 0 0 30px rgba(0, 255, 200, 0.15), 0 0 60px rgba(0, 255, 200, 0.05);
   }
 </style>
 </head>
@@ -49,8 +53,10 @@ const JUMP_FORCE = 11.5;
 const PLAYER_W = 22;
 const PLAYER_H = 26;
 
+const FONT = '"Press Start 2P", monospace';
+
 let gameState = 'menu';
-let player, obstacles, coins, particles, bgStars;
+let player, obstacles, coins, particles, bgStars, bgTrees;
 let score, coinCount, combo, comboTimer;
 let baseSpeed, gameSpeed, speedMult;
 let frame, hiScore, shakeX, shakeY, shakeDur;
@@ -64,17 +70,34 @@ let feverActive, feverTimer, feverFlash, totalCoinsForFever;
 const LIFE_UP_COINS = 100;
 let lives, invincible, invincibleTimer, nextLifeUpAt;
 
+// Font loaded flag
+let fontLoaded = false;
+document.fonts.ready.then(() => { fontLoaded = true; });
+
 hiScore = parseInt(localStorage.getItem('gravRunnerHi') || '0');
 
 function initBgStars() {
   bgStars = [];
-  for (let i = 0; i < 80; i++) {
+  for (let i = 0; i < 60; i++) {
     bgStars.push({
       x: Math.random() * W,
       y: Math.random() * H,
       size: Math.random() * 2 + 0.5,
-      speed: Math.random() * 0.5 + 0.2,
-      brightness: Math.random() * 0.5 + 0.3
+      speed: Math.random() * 0.4 + 0.1,
+      brightness: Math.random() * 0.4 + 0.2,
+      twinkleSpeed: Math.random() * 0.02 + 0.01,
+      twinkleOffset: Math.random() * Math.PI * 2
+    });
+  }
+  // Background trees (parallax silhouettes)
+  bgTrees = [];
+  for (let i = 0; i < 12; i++) {
+    bgTrees.push({
+      x: Math.random() * W,
+      h: Math.random() * 60 + 40,
+      w: Math.random() * 20 + 15,
+      speed: Math.random() * 0.3 + 0.15,
+      layer: Math.random() < 0.5 ? 0 : 1 // 0=far, 1=near
     });
   }
 }
@@ -174,7 +197,7 @@ function spawnCoin() {
 
 function startFever() {
   feverActive = true;
-  feverTimer = 300; // ~5 seconds
+  feverTimer = 300;
   feverFlash = 0;
   totalCoinsForFever = 0;
   shake(10);
@@ -220,15 +243,6 @@ function rectCollide(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-function circleRectCollide(cx, cy, cr, rx, ry, rw, rh) {
-  const dx = Math.abs(cx - (rx + rw / 2));
-  const dy = Math.abs(cy - (ry + rh / 2));
-  if (dx > rw / 2 + cr || dy > rh / 2 + cr) return false;
-  if (dx <= rw / 2 || dy <= rh / 2) return true;
-  const cornerDist = (dx - rw / 2) ** 2 + (dy - rh / 2) ** 2;
-  return cornerDist <= cr ** 2;
-}
-
 function update() {
   if (gameState !== 'playing') return;
 
@@ -236,11 +250,9 @@ function update() {
   speedMult = 1 + frame * 0.00012;
   gameSpeed = baseSpeed * speedMult;
 
-  // Player physics
   if (!player.grounded) {
     player.vy += GRAVITY * player.gravDir;
     player.y += player.vy;
-
     if (player.gravDir === 1 && player.y >= GROUND_Y - PLAYER_H) {
       player.y = GROUND_Y - PLAYER_H;
       player.vy = 0;
@@ -253,39 +265,26 @@ function update() {
     }
   }
 
-  // Rotation
   const targetRot = player.gravDir === 1 ? 0 : Math.PI;
   player.rotation += (targetRot - player.rotation) * 0.12;
-
-  // Run animation
   player.runFrame += gameSpeed * 0.15;
 
-  // Trail
   player.trail.push({ x: player.x + PLAYER_W / 2, y: player.y + PLAYER_H / 2, alpha: 0.6 });
   if (player.trail.length > 12) player.trail.shift();
   player.trail.forEach(t => t.alpha *= 0.82);
 
-  // Score
   score += gameSpeed * 0.1;
 
-  // Combo timer
   if (combo > 0) {
     comboTimer -= 1;
     if (comboTimer <= 0) combo = 0;
   }
 
-  // Fever mode update
   if (feverActive) {
     feverTimer--;
     feverFlash += 0.15;
-    if (feverTimer <= 0) {
-      feverActive = false;
-    }
-    // Spawn fever coins frequently, no obstacles
-    if (frame % 20 === 0) {
-      spawnFeverCoins();
-    }
-    // Rainbow particles from edges
+    if (feverTimer <= 0) feverActive = false;
+    if (frame % 20 === 0) spawnFeverCoins();
     if (frame % 4 === 0) {
       const colors = ['#ffd700', '#ff00ff', '#00ffc8', '#ff3366', '#66ffee'];
       spawnParticles(Math.random() * W, Math.random() < 0.5 ? CEILING_Y : GROUND_Y,
@@ -293,7 +292,6 @@ function update() {
     }
   }
 
-  // Spawn obstacles (not during fever)
   if (!feverActive) {
     const minGap = Math.max(160, 260 - frame * 0.02);
     const furthestObst = obstacles.length > 0 ? Math.max(...obstacles.map(o => o.x + o.w)) : 0;
@@ -303,27 +301,17 @@ function update() {
     }
   }
 
-  // Spawn coins (normal mode)
-  if (!feverActive && frame % 70 === 0 && Math.random() < 0.6) {
-    spawnCoin();
-  }
+  if (!feverActive && frame % 70 === 0 && Math.random() < 0.6) spawnCoin();
 
-  // Update obstacles
   for (let i = obstacles.length - 1; i >= 0; i--) {
     obstacles[i].x -= gameSpeed;
-    if (obstacles[i].x + obstacles[i].w < -10) {
-      obstacles.splice(i, 1);
-    }
+    if (obstacles[i].x + obstacles[i].w < -10) obstacles.splice(i, 1);
   }
 
-  // Update coins
   for (let i = coins.length - 1; i >= 0; i--) {
     const c = coins[i];
     c.x -= gameSpeed;
-    if (c.x < -20) {
-      coins.splice(i, 1);
-      continue;
-    }
+    if (c.x < -20) { coins.splice(i, 1); continue; }
     if (!c.collected) {
       const bobY = c.y + Math.sin(frame * 0.06 + c.bobOffset) * 6;
       const px = player.x + PLAYER_W / 2;
@@ -340,38 +328,27 @@ function update() {
         score += 10 * bonus * feverMult;
         spawnParticles(c.x, bobY, '#ffd700', 8, 4);
         coins.splice(i, 1);
-        // Life up every 100 coins
         if (coinCount >= nextLifeUpAt) {
           lives++;
           nextLifeUpAt += LIFE_UP_COINS;
           spawnParticles(player.x + PLAYER_W / 2, player.y + PLAYER_H / 2, '#00ff66', 20, 6);
           shake(8);
         }
-        // Trigger fever
-        if (!feverActive && totalCoinsForFever >= FEVER_COIN_THRESHOLD) {
-          startFever();
-        }
+        if (!feverActive && totalCoinsForFever >= FEVER_COIN_THRESHOLD) startFever();
       }
     }
   }
 
-  // Clear obstacles when fever starts
   if (feverActive && obstacles.length > 0) {
-    obstacles.forEach(o => {
-      spawnParticles(o.x + o.w / 2, o.y + o.h / 2, '#ff336688', 5, 4);
-    });
+    obstacles.forEach(o => spawnParticles(o.x + o.w / 2, o.y + o.h / 2, '#ff336688', 5, 4));
     obstacles = [];
   }
 
-  // Invincibility timer
   if (invincible) {
     invincibleTimer--;
-    if (invincibleTimer <= 0) {
-      invincible = false;
-    }
+    if (invincibleTimer <= 0) invincible = false;
   }
 
-  // Collision with obstacles
   const pb = { x: player.x + 3, y: player.y + 3, w: PLAYER_W - 6, h: PLAYER_H - 6 };
   for (const o of obstacles) {
     if (rectCollide(pb, o)) {
@@ -388,14 +365,12 @@ function update() {
         }
         return;
       }
-      // Still alive: become invincible briefly
       invincible = true;
-      invincibleTimer = 90; // ~1.5 seconds
+      invincibleTimer = 90;
       break;
     }
   }
 
-  // Particles
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.x += p.vx;
@@ -404,16 +379,16 @@ function update() {
     if (p.life <= 0) particles.splice(i, 1);
   }
 
-  // Background stars
   bgStars.forEach(s => {
     s.x -= s.speed * speedMult;
-    if (s.x < 0) {
-      s.x = W;
-      s.y = Math.random() * H;
-    }
+    if (s.x < 0) { s.x = W; s.y = Math.random() * H; }
   });
 
-  // Shake
+  bgTrees.forEach(t => {
+    t.x -= t.speed * speedMult * gameSpeed * 0.3;
+    if (t.x + t.w < 0) { t.x = W + Math.random() * 50; t.h = Math.random() * 60 + 40; }
+  });
+
   if (shakeDur > 0) {
     shakeDur--;
     shakeX = (Math.random() - 0.5) * shakeDur * 0.8;
@@ -424,15 +399,66 @@ function update() {
   }
 }
 
+// ── Drawing ──
+
+function drawBackground() {
+  // Deep forest night sky gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  if (feverActive) {
+    const p = Math.sin(feverFlash) * 0.15 + 0.15;
+    bgGrad.addColorStop(0, '#1a0030');
+    bgGrad.addColorStop(0.5, `rgba(60, 0, 80, ${0.8 + p})`);
+    bgGrad.addColorStop(1, '#0a0015');
+  } else {
+    bgGrad.addColorStop(0, '#060612');
+    bgGrad.addColorStop(0.3, '#0a1628');
+    bgGrad.addColorStop(0.7, '#081420');
+    bgGrad.addColorStop(1, '#040a10');
+  }
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars with twinkle
+  bgStars.forEach(s => {
+    const twinkle = Math.sin(frame * s.twinkleSpeed + s.twinkleOffset) * 0.3 + 0.7;
+    ctx.globalAlpha = s.brightness * twinkle;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+    // Glow for larger stars
+    if (s.size > 1.5) {
+      ctx.globalAlpha = s.brightness * twinkle * 0.15;
+      ctx.fillStyle = '#88ccff';
+      ctx.fillRect(s.x - 1, s.y - 1, s.size + 2, s.size + 2);
+    }
+  });
+  ctx.globalAlpha = 1;
+
+  // Background tree silhouettes
+  bgTrees.forEach(t => {
+    const alpha = t.layer === 0 ? 0.08 : 0.14;
+    ctx.fillStyle = `rgba(0, 80, 50, ${alpha})`;
+    // Tree trunk
+    ctx.fillRect(t.x + t.w / 2 - 2, GROUND_Y - t.h * 0.3, 4, t.h * 0.3);
+    // Canopy (triangle)
+    ctx.beginPath();
+    ctx.moveTo(t.x, GROUND_Y - t.h * 0.3);
+    ctx.lineTo(t.x + t.w / 2, GROUND_Y - t.h);
+    ctx.lineTo(t.x + t.w, GROUND_Y - t.h * 0.3);
+    ctx.closePath();
+    ctx.fill();
+  });
+}
+
 function drawSurface(y, isGround) {
+  // Main surface fill
   const grad = ctx.createLinearGradient(0, y, 0, isGround ? y + SURFACE_H : y - SURFACE_H);
   if (feverActive) {
     const pulse = Math.sin(feverFlash) * 0.3 + 0.7;
-    grad.addColorStop(0, `rgba(255, 0, 255, ${pulse * 0.5})`);
-    grad.addColorStop(1, '#0a0a1a');
+    grad.addColorStop(0, `rgba(180, 0, 220, ${pulse * 0.4})`);
+    grad.addColorStop(1, '#0a0015');
   } else {
-    grad.addColorStop(0, '#1a3a5c');
-    grad.addColorStop(1, '#0a0a1a');
+    grad.addColorStop(0, '#0d2818');
+    grad.addColorStop(1, '#060612');
   }
   ctx.fillStyle = grad;
   if (isGround) {
@@ -440,8 +466,28 @@ function drawSurface(y, isGround) {
   } else {
     ctx.fillRect(0, 0, W, y);
   }
-  ctx.fillStyle = feverActive ? '#ff00ff88' : '#00ffc855';
+
+  // Pixel-art style block pattern on the surface edge
+  const blockSize = 6;
+  const edgeY = isGround ? y : y - blockSize;
+  ctx.fillStyle = feverActive ? '#cc00ff44' : '#0a5c3066';
+  for (let bx = 0; bx < W; bx += blockSize) {
+    const hash = (bx * 7 + 13) % 5;
+    if (hash < 3) {
+      ctx.fillRect(bx, edgeY, blockSize - 1, blockSize - 1);
+    }
+    if (hash < 1) {
+      const y2 = isGround ? edgeY + blockSize : edgeY - blockSize;
+      ctx.fillRect(bx, y2, blockSize - 1, blockSize - 1);
+    }
+  }
+
+  // Neon edge line
+  ctx.fillStyle = feverActive ? '#ff00ff88' : '#00ffc844';
   ctx.fillRect(0, y, W, 1);
+  // Glow line
+  ctx.fillStyle = feverActive ? '#ff00ff22' : '#00ffc815';
+  ctx.fillRect(0, isGround ? y - 2 : y + 1, W, 3);
 }
 
 function drawPlayer() {
@@ -449,24 +495,32 @@ function drawPlayer() {
   const cx = p.x + PLAYER_W / 2;
   const cy = p.y + PLAYER_H / 2;
 
-  // Skip drawing every other frame when invincible (blink effect)
   if (invincible && Math.floor(frame / 3) % 2 === 0) return;
 
-  // Trail
+  // Trail with glow
   p.trail.forEach(t => {
-    ctx.globalAlpha = t.alpha * 0.4;
+    ctx.globalAlpha = t.alpha * 0.5;
     ctx.fillStyle = '#00ffc8';
+    ctx.shadowColor = '#00ffc8';
+    ctx.shadowBlur = 6;
     ctx.beginPath();
     ctx.arc(t.x, t.y, 3, 0, Math.PI * 2);
     ctx.fill();
   });
+  ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
 
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(p.rotation);
 
-  // Tail (behind body)
+  // Outer glow aura
+  ctx.fillStyle = 'rgba(0, 255, 200, 0.06)';
+  ctx.beginPath();
+  ctx.arc(0, 0, 22, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tail
   const tailWag = Math.sin(p.runFrame * 1.5) * 0.3;
   ctx.save();
   ctx.translate(-PLAYER_W / 2 - 2, 2);
@@ -475,17 +529,16 @@ function drawPlayer() {
   ctx.beginPath();
   ctx.ellipse(-5, 0, 5, 8, -0.3, 0, Math.PI * 2);
   ctx.fill();
-  // Tail stripes
-  ctx.fillStyle = '#00ffc8';
+  ctx.fillStyle = '#00ddb0';
   ctx.beginPath();
   ctx.ellipse(-5, -3, 3, 2, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
-  // Body (round tanuki shape)
+  // Body
   ctx.fillStyle = '#00ddb0';
   ctx.shadowColor = '#00ffc8';
-  ctx.shadowBlur = 12;
+  ctx.shadowBlur = 14;
   ctx.beginPath();
   ctx.ellipse(0, 2, PLAYER_W / 2, PLAYER_H / 2 - 2, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -497,7 +550,7 @@ function drawPlayer() {
   ctx.ellipse(1, 5, 7, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Head (slightly larger circle on top)
+  // Head
   ctx.fillStyle = '#00ffc8';
   ctx.beginPath();
   ctx.arc(1, -8, 10, 0, Math.PI * 2);
@@ -506,140 +559,93 @@ function drawPlayer() {
   // Ears
   ctx.fillStyle = '#00ffc8';
   ctx.beginPath();
-  ctx.moveTo(-7, -15);
-  ctx.lineTo(-11, -22);
-  ctx.lineTo(-2, -17);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(-7, -15); ctx.lineTo(-11, -22); ctx.lineTo(-2, -17); ctx.closePath(); ctx.fill();
   ctx.beginPath();
-  ctx.moveTo(7, -15);
-  ctx.lineTo(11, -22);
-  ctx.lineTo(2, -17);
-  ctx.closePath();
-  ctx.fill();
-  // Inner ears
+  ctx.moveTo(7, -15); ctx.lineTo(11, -22); ctx.lineTo(2, -17); ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#009977';
   ctx.beginPath();
-  ctx.moveTo(-7, -16);
-  ctx.lineTo(-9, -20);
-  ctx.lineTo(-4, -17);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(-7, -16); ctx.lineTo(-9, -20); ctx.lineTo(-4, -17); ctx.closePath(); ctx.fill();
   ctx.beginPath();
-  ctx.moveTo(7, -16);
-  ctx.lineTo(9, -20);
-  ctx.lineTo(4, -17);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(7, -16); ctx.lineTo(9, -20); ctx.lineTo(4, -17); ctx.closePath(); ctx.fill();
 
-  // Eye patches (dark tanuki markings)
+  // Eye patches
   ctx.fillStyle = '#006655';
-  ctx.beginPath();
-  ctx.ellipse(-5, -9, 5, 4, -0.1, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(6, -9, 5, 4, 0.1, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-5, -9, 5, 4, -0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(6, -9, 5, 4, 0.1, 0, Math.PI * 2); ctx.fill();
 
-  // Eyes (white + pupil)
+  // Eyes
   ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.arc(-4, -9, 3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(6, -9, 3, 0, Math.PI * 2);
-  ctx.fill();
-  // Pupils
+  ctx.beginPath(); ctx.arc(-4, -9, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(6, -9, 3, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#0a2a3a';
-  ctx.beginPath();
-  ctx.arc(-3, -9, 1.8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(7, -9, 1.8, 0, Math.PI * 2);
-  ctx.fill();
-  // Eye shine
+  ctx.beginPath(); ctx.arc(-3, -9, 1.8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(7, -9, 1.8, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#66ffee';
-  ctx.beginPath();
-  ctx.arc(-4, -10, 0.8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(6, -10, 0.8, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.beginPath(); ctx.arc(-4, -10, 0.8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(6, -10, 0.8, 0, Math.PI * 2); ctx.fill();
 
   // Nose
   ctx.fillStyle = '#006655';
-  ctx.beginPath();
-  ctx.arc(1, -5, 2, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.beginPath(); ctx.arc(1, -5, 2, 0, Math.PI * 2); ctx.fill();
 
   // Mouth
   ctx.strokeStyle = '#006655';
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(1, -3);
-  ctx.lineTo(-1, -1);
-  ctx.moveTo(1, -3);
-  ctx.lineTo(3, -1);
-  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(1, -3); ctx.lineTo(-1, -1); ctx.moveTo(1, -3); ctx.lineTo(3, -1); ctx.stroke();
 
-  // Legs animation
+  // Legs
   if (p.grounded) {
     const legAnim = Math.sin(p.runFrame) * 3;
     ctx.fillStyle = '#009977';
-    // Front legs
-    ctx.beginPath();
-    ctx.ellipse(6, PLAYER_H / 2 - 3 - legAnim, 3, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Back legs
-    ctx.beginPath();
-    ctx.ellipse(-5, PLAYER_H / 2 - 3 + legAnim, 3, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.ellipse(6, PLAYER_H / 2 - 3 - legAnim, 3, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-5, PLAYER_H / 2 - 3 + legAnim, 3, 4, 0, 0, Math.PI * 2); ctx.fill();
   } else {
-    // Tucked legs in air
     ctx.fillStyle = '#009977';
-    ctx.beginPath();
-    ctx.ellipse(5, PLAYER_H / 2 - 4, 3, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(-4, PLAYER_H / 2 - 4, 3, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.ellipse(5, PLAYER_H / 2 - 4, 3, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-4, PLAYER_H / 2 - 4, 3, 3, 0, 0, Math.PI * 2); ctx.fill();
   }
 
   ctx.restore();
 }
 
 function drawObstacle(o) {
+  // Crystal/thorn style obstacles
   const grad = ctx.createLinearGradient(o.x, o.y, o.x, o.y + o.h);
   if (o.type === 'ground') {
-    grad.addColorStop(0, '#ff3366');
-    grad.addColorStop(1, '#991133');
+    grad.addColorStop(0, '#ff2255');
+    grad.addColorStop(0.5, '#cc1144');
+    grad.addColorStop(1, '#660022');
   } else {
-    grad.addColorStop(0, '#991133');
-    grad.addColorStop(1, '#ff3366');
+    grad.addColorStop(0, '#660022');
+    grad.addColorStop(0.5, '#cc1144');
+    grad.addColorStop(1, '#ff2255');
   }
   ctx.fillStyle = grad;
-  ctx.shadowColor = '#ff336688';
-  ctx.shadowBlur = 8;
-  roundRect(o.x, o.y, o.w, o.h, 3);
+  ctx.shadowColor = '#ff225588';
+  ctx.shadowBlur = 10;
+
+  // Jagged crystal shape
+  const cx = o.x + o.w / 2;
+  const tipY = o.type === 'ground' ? o.y : o.y + o.h;
+  const baseY = o.type === 'ground' ? o.y + o.h : o.y;
+  ctx.beginPath();
+  ctx.moveTo(cx, tipY);
+  ctx.lineTo(o.x + o.w * 0.8, tipY + (baseY - tipY) * 0.3);
+  ctx.lineTo(o.x + o.w, baseY);
+  ctx.lineTo(o.x, baseY);
+  ctx.lineTo(o.x + o.w * 0.2, tipY + (baseY - tipY) * 0.3);
+  ctx.closePath();
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Warning stripe
-  ctx.fillStyle = '#ff336633';
-  const stripeW = 4;
-  ctx.save();
+  // Inner shine
+  ctx.fillStyle = '#ff558833';
   ctx.beginPath();
-  ctx.rect(o.x, o.y, o.w, o.h);
-  ctx.clip();
-  for (let s = 0; s < o.h + o.w; s += stripeW * 3) {
-    ctx.beginPath();
-    ctx.moveTo(o.x + s, o.y);
-    ctx.lineTo(o.x + s + stripeW, o.y);
-    ctx.lineTo(o.x + s - o.h + stripeW, o.y + o.h);
-    ctx.lineTo(o.x + s - o.h, o.y + o.h);
-    ctx.fill();
-  }
-  ctx.restore();
+  ctx.moveTo(cx, tipY + (baseY - tipY) * 0.15);
+  ctx.lineTo(cx + o.w * 0.15, tipY + (baseY - tipY) * 0.5);
+  ctx.lineTo(cx - o.w * 0.1, tipY + (baseY - tipY) * 0.4);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawCoin(c) {
@@ -650,17 +656,31 @@ function drawCoin(c) {
   ctx.translate(c.x, bobY);
   ctx.scale(Math.max(scaleX, 0.3), 1);
 
+  // Outer glow
+  ctx.fillStyle = 'rgba(255, 215, 0, 0.15)';
+  ctx.beginPath();
+  ctx.arc(0, 0, c.size + 6, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.fillStyle = '#ffd700';
   ctx.shadowColor = '#ffd700';
-  ctx.shadowBlur = 10;
+  ctx.shadowBlur = 14;
   ctx.beginPath();
   ctx.arc(0, 0, c.size, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  ctx.fillStyle = '#ffee55';
+  // Inner ring
+  ctx.strokeStyle = '#ffaa00';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(-2, -2, c.size * 0.4, 0, Math.PI * 2);
+  ctx.arc(0, 0, c.size * 0.6, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Shine
+  ctx.fillStyle = '#ffee88';
+  ctx.beginPath();
+  ctx.arc(-2, -2, c.size * 0.3, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.restore();
@@ -670,36 +690,76 @@ function drawParticles() {
   particles.forEach(p => {
     ctx.globalAlpha = p.life;
     ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 4;
     ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
   });
+  ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
 }
 
+function drawScanlines() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+  for (let y = 0; y < H; y += 3) {
+    ctx.fillRect(0, y, W, 1);
+  }
+}
+
+function drawVignette() {
+  const vGrad = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75);
+  vGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  vGrad.addColorStop(1, 'rgba(0,0,0,0.4)');
+  ctx.fillStyle = vGrad;
+  ctx.fillRect(0, 0, W, H);
+}
+
 function drawUI() {
+  const f = FONT;
+
   // Score
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 18px "Courier New", monospace';
+  ctx.fillStyle = '#E2E8F0';
+  ctx.font = `9px ${f}`;
   ctx.textAlign = 'left';
-  ctx.fillText(`SCORE ${Math.floor(score)}`, 12, 24);
+  ctx.shadowColor = '#00ffc8';
+  ctx.shadowBlur = 6;
+  ctx.fillText(`SCORE`, 10, 18);
+  ctx.shadowBlur = 0;
+  ctx.font = `12px ${f}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(`${Math.floor(score)}`, 10, 32);
 
   // Lives
+  ctx.textAlign = 'center';
   ctx.fillStyle = '#ff3366';
-  ctx.font = 'bold 18px "Courier New", monospace';
-  const livesStr = '♥'.repeat(Math.max(lives, 0));
-  ctx.fillText(livesStr, W / 2 - 30, 24);
+  ctx.shadowColor = '#ff3366';
+  ctx.shadowBlur = 8;
+  ctx.font = `14px ${f}`;
+  const livesStr = '\u2665'.repeat(Math.max(lives, 0));
+  ctx.fillText(livesStr, W / 2, 26);
+  ctx.shadowBlur = 0;
 
   // Coins
+  ctx.textAlign = 'right';
   ctx.fillStyle = '#ffd700';
-  ctx.font = 'bold 18px "Courier New", monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText(`★ ${coinCount}`, W - 90, 24);
+  ctx.shadowColor = '#ffd700';
+  ctx.shadowBlur = 6;
+  ctx.font = `9px ${f}`;
+  ctx.fillText(`COIN`, W - 10, 18);
+  ctx.shadowBlur = 0;
+  ctx.font = `12px ${f}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(`${coinCount}`, W - 10, 32);
 
   // Combo
   if (combo >= 2) {
+    const comboSize = Math.min(10 + combo * 2, 22);
     ctx.fillStyle = combo >= 5 ? '#ff00ff' : '#ffd700';
-    ctx.font = `bold ${14 + combo}px "Courier New", monospace`;
+    ctx.shadowColor = combo >= 5 ? '#ff00ff' : '#ffd700';
+    ctx.shadowBlur = 15;
+    ctx.font = `${comboSize}px ${f}`;
     ctx.textAlign = 'center';
-    ctx.fillText(`× ${combo} COMBO!`, W / 2, H / 2 - 60);
+    ctx.fillText(`x${combo} COMBO`, W / 2, H / 2 - 60);
+    ctx.shadowBlur = 0;
   }
 
   // Fever gauge
@@ -707,7 +767,7 @@ function drawUI() {
   const gaugeY = H - 28;
   const gaugeW = 120;
   const gaugeH = 8;
-  ctx.fillStyle = '#ffffff22';
+  ctx.fillStyle = '#ffffff15';
   roundRect(gaugeX, gaugeY, gaugeW, gaugeH, 4);
   ctx.fill();
   const feverPct = feverActive ? feverTimer / 300 : Math.min(totalCoinsForFever / FEVER_COIN_THRESHOLD, 1);
@@ -722,13 +782,16 @@ function drawUI() {
       fGrad.addColorStop(1, '#ffaa00');
     }
     ctx.fillStyle = fGrad;
+    ctx.shadowColor = feverActive ? '#ff00ff' : '#ffd700';
+    ctx.shadowBlur = feverActive ? 8 : 0;
     roundRect(gaugeX, gaugeY, gaugeW * feverPct, gaugeH, 4);
     ctx.fill();
+    ctx.shadowBlur = 0;
   }
-  ctx.fillStyle = '#ffffff88';
-  ctx.font = '10px "Courier New", monospace';
+  ctx.fillStyle = '#ffffff66';
+  ctx.font = `7px ${f}`;
   ctx.textAlign = 'left';
-  ctx.fillText(feverActive ? 'FEVER!' : `FEVER ${totalCoinsForFever}/${FEVER_COIN_THRESHOLD}`, gaugeX, gaugeY - 4);
+  ctx.fillText(feverActive ? 'FEVER!' : `FEVER ${totalCoinsForFever}/${FEVER_COIN_THRESHOLD}`, gaugeX, gaugeY - 5);
 
   // Fever banner
   if (feverActive) {
@@ -736,149 +799,233 @@ function drawUI() {
     ctx.globalAlpha = bannerAlpha;
     ctx.fillStyle = '#ff00ff';
     ctx.shadowColor = '#ff00ff';
-    ctx.shadowBlur = 20;
-    ctx.font = 'bold 28px "Courier New", monospace';
+    ctx.shadowBlur = 25;
+    ctx.font = `16px ${f}`;
     ctx.textAlign = 'center';
-    ctx.fillText('FEVER TIME!', W / 2, 80);
+    ctx.fillText('FEVER TIME!', W / 2, 70);
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
-
     ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 14px "Courier New", monospace';
-    ctx.fillText('COIN x2', W / 2, 100);
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 8;
+    ctx.font = `9px ${f}`;
+    ctx.fillText('COIN x2', W / 2, 88);
+    ctx.shadowBlur = 0;
   }
 
   // Speed indicator
   const speedPct = Math.min((speedMult - 1) * 10, 1);
-  ctx.fillStyle = '#ffffff33';
-  ctx.fillRect(12, H - 14, 100, 4);
+  ctx.fillStyle = '#ffffff15';
+  ctx.fillRect(12, H - 14, 100, 3);
   const spdGrad = ctx.createLinearGradient(12, 0, 112, 0);
   spdGrad.addColorStop(0, '#00ffc8');
   spdGrad.addColorStop(1, '#ff3366');
   ctx.fillStyle = spdGrad;
-  ctx.fillRect(12, H - 14, 100 * speedPct, 4);
+  ctx.fillRect(12, H - 14, 100 * speedPct, 3);
 
   // Gravity indicator
-  const arrowY = 50;
-  const arrowX = W - 30;
   ctx.save();
-  ctx.translate(arrowX, arrowY);
+  ctx.translate(W - 24, 52);
   ctx.rotate(player.gravDir === 1 ? 0 : Math.PI);
-  ctx.fillStyle = player.gravDir === 1 ? '#00ffc866' : '#ff00ff88';
+  ctx.fillStyle = player.gravDir === 1 ? '#00ffc855' : '#ff00ff77';
+  ctx.shadowColor = player.gravDir === 1 ? '#00ffc8' : '#ff00ff';
+  ctx.shadowBlur = 6;
   ctx.beginPath();
-  ctx.moveTo(0, -8);
-  ctx.lineTo(6, 4);
-  ctx.lineTo(-6, 4);
-  ctx.closePath();
+  ctx.moveTo(0, -8); ctx.lineTo(6, 4); ctx.lineTo(-6, 4); ctx.closePath();
   ctx.fill();
+  ctx.shadowBlur = 0;
   ctx.restore();
 }
 
 function drawMenu() {
-  // Background
-  ctx.fillStyle = '#0a0a1a';
-  ctx.fillRect(0, 0, W, H);
+  drawBackground();
+  drawSurface(GROUND_Y, true);
+  drawSurface(CEILING_Y, false);
 
-  bgStars.forEach(s => {
-    ctx.fillStyle = `rgba(255,255,255,${s.brightness})`;
-    ctx.fillRect(s.x, s.y, s.size, s.size);
-  });
+  const f = FONT;
+
+  // Title glow background
+  ctx.fillStyle = 'rgba(0, 255, 200, 0.03)';
+  ctx.beginPath();
+  ctx.arc(W / 2, H / 2 - 80, 120, 0, Math.PI * 2);
+  ctx.fill();
 
   // Title
+  ctx.textAlign = 'center';
   ctx.fillStyle = '#00ffc8';
   ctx.shadowColor = '#00ffc8';
-  ctx.shadowBlur = 20;
-  ctx.font = 'bold 42px "Courier New", monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('GRAVITY', W / 2, H / 2 - 100);
-  ctx.fillText('RUNNER', W / 2, H / 2 - 55);
+  ctx.shadowBlur = 30;
+  ctx.font = `20px ${f}`;
+  ctx.fillText('GRAVITY', W / 2, H / 2 - 110);
+  ctx.fillText('RUNNER', W / 2, H / 2 - 80);
   ctx.shadowBlur = 0;
 
-  // Instructions
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '15px "Courier New", monospace';
-  ctx.fillText('タップ / スペース → ジャンプ', W / 2, H / 2 + 10);
+  // Subtitle
+  ctx.fillStyle = '#66ffe0';
+  ctx.font = `7px ${f}`;
+  ctx.fillText('- Tanuki Coin Rush -', W / 2, H / 2 - 58);
+
+  // Decorative line
+  const lineW = 160;
+  ctx.strokeStyle = '#00ffc833';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(W / 2 - lineW / 2, H / 2 - 42);
+  ctx.lineTo(W / 2 + lineW / 2, H / 2 - 42);
+  ctx.stroke();
+
+  // Instructions panel
+  ctx.fillStyle = 'rgba(0, 20, 15, 0.5)';
+  roundRect(W / 2 - 170, H / 2 - 28, 340, 100, 8);
+  ctx.fill();
+  ctx.strokeStyle = '#00ffc822';
+  ctx.lineWidth = 1;
+  roundRect(W / 2 - 170, H / 2 - 28, 340, 100, 8);
+  ctx.stroke();
+
+  ctx.font = `8px ${f}`;
+  ctx.fillStyle = '#E2E8F0';
+  ctx.fillText('TAP / SPACE', W / 2, H / 2 - 4);
+  ctx.fillStyle = '#00ffc8';
+  ctx.font = `7px ${f}`;
+  ctx.fillText('JUMP', W / 2, H / 2 + 12);
+
+  ctx.fillStyle = '#E2E8F0';
+  ctx.font = `8px ${f}`;
+  ctx.fillText('TAP IN AIR', W / 2, H / 2 + 32);
   ctx.fillStyle = '#ff00ff';
-  ctx.fillText('空中でもう一度 → 重力反転！', W / 2, H / 2 + 35);
+  ctx.font = `7px ${f}`;
+  ctx.fillText('FLIP GRAVITY!', W / 2, H / 2 + 48);
 
   ctx.fillStyle = '#ffd700';
-  ctx.fillText(`コイン${FEVER_COIN_THRESHOLD}枚 → FEVER TIME!`, W / 2, H / 2 + 60);
+  ctx.shadowColor = '#ffd700';
+  ctx.shadowBlur = 6;
+  ctx.font = `7px ${f}`;
+  ctx.fillText(`${FEVER_COIN_THRESHOLD} COINS = FEVER!`, W / 2, H / 2 + 64);
+  ctx.shadowBlur = 0;
 
   // Start prompt
   const blink = Math.sin(Date.now() * 0.004) > 0;
   if (blink) {
     ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 18px "Courier New", monospace';
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 12;
+    ctx.font = `10px ${f}`;
     ctx.fillText('TAP TO START', W / 2, H / 2 + 120);
+    ctx.shadowBlur = 0;
   }
 
   // High score
   if (hiScore > 0) {
-    ctx.fillStyle = '#ffffff88';
-    ctx.font = '14px "Courier New", monospace';
-    ctx.fillText(`HI-SCORE: ${hiScore}`, W / 2, H / 2 + 165);
+    ctx.fillStyle = '#ffffff55';
+    ctx.font = `7px ${f}`;
+    ctx.fillText(`HI-SCORE: ${hiScore}`, W / 2, H / 2 + 155);
   }
+
+  drawScanlines();
+  drawVignette();
 }
 
 // X share button area
-const shareBtn = { x: W / 2 - 80, y: 0, w: 160, h: 36 };
+const shareBtn = { x: W / 2 - 90, y: 0, w: 180, h: 38 };
 
 function shareToX() {
   const s = Math.floor(score);
   const isNew = s >= hiScore && hiScore > 0;
-  const text = `Gravity Runner で ${s} 点${isNew ? ' (ハイスコア更新!)' : ''}を記録しました！コイン${coinCount}枚獲得🪙 重力を操るたぬきランゲーム、挑戦してみて！`;
+  const text = `Gravity Runner ${s}pt${isNew ? ' NEW RECORD!' : ''} / ${coinCount} coins collected! Can you beat my score?`;
   const url = 'https://tkokami0529-source.github.io/gravity-runner/';
   const shareUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
   window.open(shareUrl, '_blank');
 }
 
 function drawGameOver() {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.fillStyle = 'rgba(0, 0, 8, 0.7)';
   ctx.fillRect(0, 0, W, H);
 
+  const f = FONT;
+
+  // Panel background
+  ctx.fillStyle = 'rgba(10, 5, 25, 0.85)';
+  roundRect(W / 2 - 180, H / 2 - 130, 360, 310, 12);
+  ctx.fill();
+  ctx.strokeStyle = '#ff336644';
+  ctx.lineWidth = 2;
+  roundRect(W / 2 - 180, H / 2 - 130, 360, 310, 12);
+  ctx.stroke();
+
+  // Title
   ctx.fillStyle = '#ff3366';
   ctx.shadowColor = '#ff3366';
-  ctx.shadowBlur = 15;
-  ctx.font = 'bold 36px "Courier New", monospace';
+  ctx.shadowBlur = 20;
+  ctx.font = `18px ${f}`;
   ctx.textAlign = 'center';
-  ctx.fillText('GAME OVER', W / 2, H / 2 - 80);
+  ctx.fillText('GAME OVER', W / 2, H / 2 - 90);
   ctx.shadowBlur = 0;
 
+  // Divider
+  ctx.strokeStyle = '#ff336633';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(W / 2 - 100, H / 2 - 72);
+  ctx.lineTo(W / 2 + 100, H / 2 - 72);
+  ctx.stroke();
+
+  // Score
+  ctx.fillStyle = '#ffffff88';
+  ctx.font = `7px ${f}`;
+  ctx.fillText('SCORE', W / 2, H / 2 - 48);
   ctx.fillStyle = '#ffffff';
-  ctx.font = '20px "Courier New", monospace';
-  ctx.fillText(`SCORE: ${Math.floor(score)}`, W / 2, H / 2 - 30);
-  ctx.fillText(`COINS: ${coinCount}`, W / 2, H / 2);
+  ctx.font = `16px ${f}`;
+  ctx.shadowColor = '#00ffc8';
+  ctx.shadowBlur = 8;
+  ctx.fillText(`${Math.floor(score)}`, W / 2, H / 2 - 28);
+  ctx.shadowBlur = 0;
+
+  // Coins
+  ctx.fillStyle = '#ffd700';
+  ctx.font = `8px ${f}`;
+  ctx.fillText(`COINS: ${coinCount}`, W / 2, H / 2 - 4);
 
   if (Math.floor(score) >= hiScore && hiScore > 0) {
     ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillText('★ NEW HIGH SCORE! ★', W / 2, H / 2 + 35);
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 12;
+    ctx.font = `9px ${f}`;
+    ctx.fillText('NEW RECORD!', W / 2, H / 2 + 24);
+    ctx.shadowBlur = 0;
   }
 
-  ctx.fillStyle = '#ffffff88';
-  ctx.font = '14px "Courier New", monospace';
-  ctx.fillText(`HI-SCORE: ${hiScore}`, W / 2, H / 2 + 65);
+  ctx.fillStyle = '#ffffff44';
+  ctx.font = `7px ${f}`;
+  ctx.fillText(`HI-SCORE: ${hiScore}`, W / 2, H / 2 + 50);
 
   // X share button
-  const btnY = H / 2 + 90;
+  const btnY = H / 2 + 72;
   shareBtn.y = btnY;
+  ctx.fillStyle = '#1a1a2e';
+  ctx.strokeStyle = '#1d9bf0';
+  ctx.lineWidth = 2;
+  roundRect(shareBtn.x, btnY, shareBtn.w, shareBtn.h, 19);
+  ctx.fill();
+  roundRect(shareBtn.x, btnY, shareBtn.w, shareBtn.h, 19);
+  ctx.stroke();
   ctx.fillStyle = '#1d9bf0';
   ctx.shadowColor = '#1d9bf0';
-  ctx.shadowBlur = 10;
-  roundRect(shareBtn.x, btnY, shareBtn.w, shareBtn.h, 18);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 15px "Courier New", monospace';
+  ctx.shadowBlur = 6;
+  ctx.font = `8px ${f}`;
   ctx.textAlign = 'center';
-  ctx.fillText('𝕏 スコアを共有', W / 2, btnY + 23);
+  ctx.fillText('POST TO X', W / 2, btnY + 24);
+  ctx.shadowBlur = 0;
 
-  // Retry prompt
+  // Retry
   const blink = Math.sin(Date.now() * 0.004) > 0;
   if (blink) {
     ctx.fillStyle = '#00ffc8';
-    ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillText('TAP TO RETRY', W / 2, btnY + 75);
+    ctx.shadowColor = '#00ffc8';
+    ctx.shadowBlur = 8;
+    ctx.font = `9px ${f}`;
+    ctx.fillText('TAP TO RETRY', W / 2, btnY + 70);
+    ctx.shadowBlur = 0;
   }
 }
 
@@ -907,34 +1054,20 @@ function draw() {
   ctx.save();
   ctx.translate(shakeX, shakeY);
 
-  // Background
-  ctx.fillStyle = '#0a0a1a';
-  ctx.fillRect(0, 0, W, H);
-
-  bgStars.forEach(s => {
-    ctx.fillStyle = `rgba(255,255,255,${s.brightness})`;
-    ctx.fillRect(s.x, s.y, s.size, s.size);
-  });
-
-  // Surfaces
+  drawBackground();
   drawSurface(GROUND_Y, true);
   drawSurface(CEILING_Y, false);
-
-  // Obstacles
   obstacles.forEach(drawObstacle);
-
-  // Coins
   coins.forEach(c => { if (!c.collected) drawCoin(c); });
-
-  // Player
   drawPlayer();
-
-  // Particles
   drawParticles();
 
   ctx.restore();
 
-  // UI
+  // Post-processing
+  drawScanlines();
+  drawVignette();
+
   drawUI();
 
   if (gameState === 'gameover') {
@@ -974,17 +1107,13 @@ function handleInput(e) {
   } else if (gameState === 'gameover') {
     if (e) {
       const pos = getCanvasPos(e);
-      if (isInShareBtn(pos.x, pos.y)) {
-        shareToX();
-        return;
-      }
+      if (isInShareBtn(pos.x, pos.y)) { shareToX(); return; }
     }
     gameState = 'playing';
     initGame();
   }
 }
 
-// Input handlers
 window.addEventListener('keydown', e => {
   if (e.code === 'Space' || e.code === 'ArrowUp') {
     e.preventDefault();
@@ -997,10 +1126,8 @@ canvas.addEventListener('pointerdown', e => {
   handleInput(e);
 });
 
-// Prevent scroll on touch
 canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
 
-// Init
 initBgStars();
 initGame();
 gameLoop();
