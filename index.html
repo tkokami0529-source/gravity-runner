@@ -63,8 +63,9 @@ let frame, hiScore, shakeX, shakeY, shakeDur;
 let lastObstacleX, lastCoinX;
 
 // Fever mode
-const FEVER_COIN_THRESHOLD = 10;
-let feverActive, feverTimer, feverFlash, totalCoinsForFever;
+const FEVER_BASE_THRESHOLD = 10;
+const FEVER_THRESHOLD_INCREMENT = 5;
+let feverActive, feverTimer, feverFlash, totalCoinsForFever, feverThreshold;
 
 // Lives
 const LIFE_UP_COINS = 100;
@@ -133,6 +134,7 @@ function initGame() {
   feverTimer = 0;
   feverFlash = 0;
   totalCoinsForFever = 0;
+  feverThreshold = FEVER_BASE_THRESHOLD;
   lives = 3;
   invincible = false;
   invincibleTimer = 0;
@@ -200,6 +202,7 @@ function startFever() {
   feverTimer = 300;
   feverFlash = 0;
   totalCoinsForFever = 0;
+  feverThreshold += FEVER_THRESHOLD_INCREMENT;
   shake(10);
   spawnParticles(W / 2, H / 2, '#ffd700', 30, 10);
   spawnParticles(W / 2, H / 2, '#ff00ff', 20, 8);
@@ -334,7 +337,7 @@ function update() {
           spawnParticles(player.x + PLAYER_W / 2, player.y + PLAYER_H / 2, '#00ff66', 20, 6);
           shake(8);
         }
-        if (!feverActive && totalCoinsForFever >= FEVER_COIN_THRESHOLD) startFever();
+        if (!feverActive && totalCoinsForFever >= feverThreshold) startFever();
       }
     }
   }
@@ -770,7 +773,7 @@ function drawUI() {
   ctx.fillStyle = '#ffffff15';
   roundRect(gaugeX, gaugeY, gaugeW, gaugeH, 4);
   ctx.fill();
-  const feverPct = feverActive ? feverTimer / 300 : Math.min(totalCoinsForFever / FEVER_COIN_THRESHOLD, 1);
+  const feverPct = feverActive ? feverTimer / 300 : Math.min(totalCoinsForFever / feverThreshold, 1);
   if (feverPct > 0) {
     const fGrad = ctx.createLinearGradient(gaugeX, 0, gaugeX + gaugeW, 0);
     if (feverActive) {
@@ -791,7 +794,7 @@ function drawUI() {
   ctx.fillStyle = '#ffffff66';
   ctx.font = `7px ${f}`;
   ctx.textAlign = 'left';
-  ctx.fillText(feverActive ? 'FEVER!' : `FEVER ${totalCoinsForFever}/${FEVER_COIN_THRESHOLD}`, gaugeX, gaugeY - 5);
+  ctx.fillText(feverActive ? 'FEVER!' : `FEVER ${totalCoinsForFever}/${feverThreshold}`, gaugeX, gaugeY - 5);
 
   // Fever banner
   if (feverActive) {
@@ -901,7 +904,7 @@ function drawMenu() {
   ctx.shadowColor = '#ffd700';
   ctx.shadowBlur = 6;
   ctx.font = `7px ${f}`;
-  ctx.fillText(`${FEVER_COIN_THRESHOLD} COINS = FEVER!`, W / 2, H / 2 + 64);
+  ctx.fillText(`${feverThreshold} COINS = FEVER!`, W / 2, H / 2 + 64);
   ctx.shadowBlur = 0;
 
   // Start prompt
