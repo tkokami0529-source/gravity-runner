@@ -66,10 +66,6 @@ const STAGES = [
 ];
 let currentStage, stageTransition, stageTransTimer;
 
-// Boss
-const BOSS_INTERVAL = 600;
-let bossActive, boss, bossTimer, nextBossScore, bossDefeated;
-
 hiScore = parseInt(localStorage.getItem('gravRunnerHi') || '0');
 
 function getStage() {
@@ -107,7 +103,6 @@ function initGame() {
   lives=3; invincible=false; invincibleTimer=0; nextLifeUpAt=LIFE_UP_COINS;
   magnetActive=false; magnetTimer=0; shieldActive=false; slowActive=false; slowTimer=0;
   currentStage=0; stageTransition=false; stageTransTimer=0;
-  bossActive=false; boss=null; bossTimer=0; nextBossScore=BOSS_INTERVAL; bossDefeated=0;
 }
 
 function shake(d) { shakeDur = d; }
@@ -118,7 +113,6 @@ function spawnParticles(x,y,color,count,spread) {
 }
 
 function spawnObstacle() {
-  if (bossActive) return;
   const types=['ground','ceiling','both','ground','ceiling'];
   const type=types[Math.floor(Math.random()*types.length)];
   const obstW=Math.random()*20+25, obstH=Math.random()*30+35;
@@ -157,38 +151,6 @@ function spawnFeverCoins() {
   const count=Math.floor(Math.random()*4)+4, minY=CEILING_Y+50, maxY=GROUND_Y-50;
   for (let i=0;i<count;i++) coins.push({ x:W+10+Math.random()*180, y:minY+Math.random()*(maxY-minY),
     size:10, bobOffset:Math.random()*Math.PI*2, collected:false });
-}
-
-function startBoss() {
-  bossActive=true; bossTimer=0;
-  const gapH=160;
-  const gapY=CEILING_Y+80+Math.random()*(GROUND_Y-CEILING_Y-gapH-160);
-  boss = { x:W+20, w:60, gapY, gapH, hp:1, vy:0.8, phase:0 };
-  // Clear existing obstacles
-  obstacles.forEach(o => spawnParticles(o.x+o.w/2,o.y+o.h/2,'#ff336644',3,3));
-  obstacles=[];
-}
-
-function defeatBoss() {
-  bossActive=false;
-  bossDefeated++;
-  shake(20);
-  // Explosion
-  for (let i=0;i<5;i++) {
-    spawnParticles(boss.x+boss.w/2, boss.gapY, '#ffd700', 15, 8);
-    spawnParticles(boss.x+boss.w/2, boss.gapY+boss.gapH, '#ff6600', 15, 8);
-  }
-  // Bonus coins
-  for (let i=0;i<15;i++) {
-    coins.push({ x:boss.x+Math.random()*80, y:CEILING_Y+50+Math.random()*(GROUND_Y-CEILING_Y-100),
-      size:10, bobOffset:Math.random()*Math.PI*2, collected:false });
-  }
-  // Fill fever gauge
-  totalCoinsForFever = Math.min(totalCoinsForFever + Math.floor(feverThreshold * 0.5), feverThreshold - 1);
-  score += 100;
-  spawnFloatingText(boss.x+boss.w/2, boss.gapY+boss.gapH/2, '+100 BOSS!', '#ff6600');
-  nextBossScore = Math.floor(score) + BOSS_INTERVAL + bossDefeated * 200;
-  boss=null;
 }
 
 function playerJump() {
@@ -247,33 +209,18 @@ function update() {
     }
   }
 
-  // Boss check
-  if (!bossActive && !feverActive && Math.floor(score)>=nextBossScore) startBoss();
-
-  // Boss update
-  if (bossActive && boss) {
-    bossTimer++;
-    boss.x += (120 - boss.x) * 0.02; // slide in to x=120
-    boss.gapY += boss.vy;
-    if (boss.gapY <= CEILING_Y + 30 || boss.gapY + boss.gapH >= GROUND_Y - 30) boss.vy *= -1;
-    // Speed up oscillation over time
-    if (bossTimer > 180) boss.vy = boss.vy > 0 ? Math.min(boss.vy * 1.0005, 2) : Math.max(boss.vy * 1.0005, -2);
-    // Survive timer → defeat
-    if (bossTimer >= 360) defeatBoss();
-  }
-
   // Spawn obstacles
-  if (!feverActive && !bossActive) {
+  if (!feverActive) {
     const minGap=Math.max(160,260-frame*0.02);
     const furthestObst=obstacles.length>0?Math.max(...obstacles.map(o=>o.x+o.w)):0;
     if (furthestObst<W-minGap||obstacles.length===0) { if(frame>30&&Math.random()<0.6) spawnObstacle(); }
   }
 
   // Spawn coins
-  if (!feverActive && !bossActive && frame%70===0 && Math.random()<0.6) spawnCoin();
+  if (!feverActive && frame%70===0 && Math.random()<0.6) spawnCoin();
 
   // Spawn powerups
-  if (frame%300===0 && Math.random()<0.5 && !bossActive) spawnPowerup();
+  if (frame%300===0 && Math.random()<0.5) spawnPowerup();
 
   // Update obstacles
   for (let i=obstacles.length-1;i>=0;i--) { obstacles[i].x-=gameSpeed; if(obstacles[i].x+obstacles[i].w<-10) obstacles.splice(i,1); }
@@ -339,22 +286,6 @@ function update() {
       spawnParticles(px,py,'#ff3333',25,7); spawnParticles(px,py,'#ff9900',15,5);
       if(lives<=0) { gameState='gameover'; if(Math.floor(score)>hiScore){hiScore=Math.floor(score);localStorage.setItem('gravRunnerHi',hiScore);} return; }
       invincible=true; invincibleTimer=90; break;
-    }
-  }
-
-  // Boss collision
-  if (bossActive && boss && !invincible) {
-    const inBossX = pb.x+pb.w > boss.x && pb.x < boss.x+boss.w;
-    if (inBossX) {
-      const inGap = pb.y > boss.gapY && pb.y+pb.h < boss.gapY+boss.gapH;
-      if (!inGap) {
-        if(shieldActive) { shieldActive=false; invincible=true; invincibleTimer=30; spawnParticles(px,py,'#00ff66',15,6); shake(8); }
-        else {
-          lives--; shake(15); spawnParticles(px,py,'#ff3333',25,7); spawnParticles(px,py,'#ff9900',15,5);
-          if(lives<=0) { gameState='gameover'; if(Math.floor(score)>hiScore){hiScore=Math.floor(score);localStorage.setItem('gravRunnerHi',hiScore);} return; }
-          invincible=true; invincibleTimer=90;
-        }
-      }
     }
   }
 
@@ -503,29 +434,6 @@ function drawObstacle(o) {
   ctx.fillStyle=st.obstTop+'33';ctx.beginPath();ctx.moveTo(cx2,tipY+(baseY2-tipY)*0.15);ctx.lineTo(cx2+o.w*0.15,tipY+(baseY2-tipY)*0.5);ctx.lineTo(cx2-o.w*0.1,tipY+(baseY2-tipY)*0.4);ctx.closePath();ctx.fill();
 }
 
-function drawBoss() {
-  if(!bossActive||!boss) return;
-  const b=boss;
-  // Top wall
-  const topGrad=ctx.createLinearGradient(b.x,CEILING_Y,b.x,b.gapY);
-  topGrad.addColorStop(0,'#880044');topGrad.addColorStop(1,'#ff2266');
-  ctx.fillStyle=topGrad; ctx.shadowColor='#ff226688'; ctx.shadowBlur=15;
-  ctx.fillRect(b.x,CEILING_Y,b.w,b.gapY-CEILING_Y);
-  // Bottom wall
-  const botGrad=ctx.createLinearGradient(b.x,b.gapY+b.gapH,b.x,GROUND_Y);
-  botGrad.addColorStop(0,'#ff2266');botGrad.addColorStop(1,'#880044');
-  ctx.fillStyle=botGrad;
-  ctx.fillRect(b.x,b.gapY+b.gapH,b.w,GROUND_Y-(b.gapY+b.gapH));
-  ctx.shadowBlur=0;
-  // Danger edges
-  ctx.fillStyle='#ff66aa55';
-  ctx.fillRect(b.x,b.gapY-4,b.w,4); ctx.fillRect(b.x,b.gapY+b.gapH,b.w,4);
-  // Timer bar
-  const pct=Math.min(bossTimer/360,1);
-  ctx.fillStyle='#ffffff22'; ctx.fillRect(b.x,CEILING_Y-8,b.w,4);
-  ctx.fillStyle='#ffd700'; ctx.fillRect(b.x,CEILING_Y-8,b.w*pct,4);
-}
-
 function drawCoin(c) {
   const bobY=c.y+Math.sin(frame*0.06+c.bobOffset)*6;
   const scaleX=Math.abs(Math.cos(frame*0.04+c.bobOffset));
@@ -617,12 +525,6 @@ function drawUI() {
     ctx.shadowBlur=0;ctx.globalAlpha=1;
   }
 
-  // Boss warning
-  if(bossActive&&bossTimer<60){
-    const alpha=Math.sin(bossTimer*0.2)*0.5+0.5;
-    ctx.globalAlpha=alpha;ctx.fillStyle='#ff2266';ctx.shadowColor='#ff2266';ctx.shadowBlur=15;ctx.font=`12px ${f}`;ctx.textAlign='center';
-    ctx.fillText('WARNING!',W/2,H/2);ctx.shadowBlur=0;ctx.globalAlpha=1;
-  }
 }
 
 function drawMenu() {
@@ -642,19 +544,22 @@ function drawMenu() {
   ctx.fillStyle='#ff00ff';ctx.font=`7px ${f}`;ctx.fillText('FLIP GRAVITY!',W/2,H/2+48);
   ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=6;ctx.font=`7px ${f}`;ctx.fillText(`${FEVER_BASE_THRESHOLD} COINS = FEVER!`,W/2,H/2+64);ctx.shadowBlur=0;
 
-  // Character switch button
-  const charBtnX=W/2-80, charBtnY=H/2+86, charBtnW=160, charBtnH=30;
-  const isFox=charMode==='fox';
-  ctx.fillStyle=isFox?'rgba(40,15,5,0.6)':'rgba(0,20,15,0.6)';
-  roundRect(charBtnX,charBtnY,charBtnW,charBtnH,6);ctx.fill();
-  ctx.strokeStyle=isFox?'#ff884444':'#00ffc822';ctx.lineWidth=1;roundRect(charBtnX,charBtnY,charBtnW,charBtnH,6);ctx.stroke();
-  ctx.fillStyle=isFox?'#ff8844':'#00ffc8';ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=6;ctx.font=`8px ${f}`;
-  ctx.fillText(isFox?'FOX MODE':'TANUKI MODE',W/2,charBtnY+19);ctx.shadowBlur=0;
-  // Small arrows on sides
-  ctx.fillStyle='#ffffff44';ctx.font=`7px ${f}`;
-  ctx.textAlign='left';ctx.fillText('\u25C0',charBtnX+8,charBtnY+19);
-  ctx.textAlign='right';ctx.fillText('\u25B6',charBtnX+charBtnW-8,charBtnY+19);
-  ctx.textAlign='center';
+  // Character select buttons (two separate buttons)
+  const btnW=130, btnH=30, btnGap=16, btnY=H/2+86;
+  const tanBtnX=W/2-btnW-btnGap/2, foxBtnX=W/2+btnGap/2;
+  const tanSel=charMode==='tanuki', foxSel=charMode==='fox';
+  // Tanuki button
+  ctx.fillStyle=tanSel?'rgba(0,40,30,0.7)':'rgba(0,20,15,0.3)';
+  roundRect(tanBtnX,btnY,btnW,btnH,6);ctx.fill();
+  ctx.strokeStyle=tanSel?'#00ffc8':'#00ffc822';ctx.lineWidth=tanSel?2:1;roundRect(tanBtnX,btnY,btnW,btnH,6);ctx.stroke();
+  ctx.fillStyle=tanSel?'#00ffc8':'#00ffc855';ctx.shadowColor=tanSel?'#00ffc8':'transparent';ctx.shadowBlur=tanSel?6:0;ctx.font=`7px ${f}`;
+  ctx.fillText('TANUKI',tanBtnX+btnW/2,btnY+19);ctx.shadowBlur=0;
+  // Fox button
+  ctx.fillStyle=foxSel?'rgba(40,15,5,0.7)':'rgba(20,10,5,0.3)';
+  roundRect(foxBtnX,btnY,btnW,btnH,6);ctx.fill();
+  ctx.strokeStyle=foxSel?'#ff8844':'#ff884422';ctx.lineWidth=foxSel?2:1;roundRect(foxBtnX,btnY,btnW,btnH,6);ctx.stroke();
+  ctx.fillStyle=foxSel?'#ff8844':'#ff884455';ctx.shadowColor=foxSel?'#ff8844':'transparent';ctx.shadowBlur=foxSel?6:0;ctx.font=`7px ${f}`;
+  ctx.fillText('FOX',foxBtnX+btnW/2,btnY+19);ctx.shadowBlur=0;
 
   const blink=Math.sin(Date.now()*0.004)>0;
   if(blink){ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=12;ctx.font=`10px ${f}`;ctx.fillText('TAP TO START',W/2,H/2+145);ctx.shadowBlur=0;}
@@ -702,7 +607,6 @@ function draw() {
   ctx.save();ctx.translate(shakeX,shakeY);
   drawBackground();drawSurface(GROUND_Y,true);drawSurface(CEILING_Y,false);
   obstacles.forEach(drawObstacle);
-  drawBoss();
   coins.forEach(c=>{if(!c.collected)drawCoin(c);});
   powerups.forEach(drawPowerup);
   drawPlayer();drawParticles();drawFloatingTexts();
@@ -716,12 +620,20 @@ function gameLoop(){update();draw();requestAnimationFrame(gameLoop);}
 function getCanvasPos(e){const r=canvas.getBoundingClientRect();const sx=W/r.width,sy=H/r.height;const cx=e.clientX||(e.touches&&e.touches[0].clientX)||0;const cy=e.clientY||(e.touches&&e.touches[0].clientY)||0;return{x:(cx-r.left)*sx,y:(cy-r.top)*sy};}
 function isInShareBtn(px,py){return px>=shareBtn.x&&px<=shareBtn.x+shareBtn.w&&py>=shareBtn.y&&py<=shareBtn.y+shareBtn.h;}
 
-const charBtn={x:W/2-80,y:H/2+86,w:160,h:30};
-function isInCharBtn(px,py){return px>=charBtn.x&&px<=charBtn.x+charBtn.w&&py>=charBtn.y&&py<=charBtn.y+charBtn.h;}
+const charBtnLayout={btnW:130,btnH:30,btnGap:16,btnY:H/2+86};
+function hitCharBtn(px,py){
+  const{btnW,btnH,btnGap,btnY}=charBtnLayout;
+  const tanBtnX=W/2-btnW-btnGap/2, foxBtnX=W/2+btnGap/2;
+  if(py>=btnY&&py<=btnY+btnH){
+    if(px>=tanBtnX&&px<=tanBtnX+btnW) return 'tanuki';
+    if(px>=foxBtnX&&px<=foxBtnX+btnW) return 'fox';
+  }
+  return null;
+}
 
 function handleInput(e){
   if(gameState==='menu'){
-    if(e){const pos=getCanvasPos(e);if(isInCharBtn(pos.x,pos.y)){charMode=charMode==='tanuki'?'fox':'tanuki';localStorage.setItem('gravRunnerChar',charMode);return;}}
+    if(e){const pos=getCanvasPos(e);const ch=hitCharBtn(pos.x,pos.y);if(ch){charMode=ch;localStorage.setItem('gravRunnerChar',charMode);return;}}
     gameState='playing';initGame();
   }
   else if(gameState==='playing') playerJump();
@@ -730,7 +642,8 @@ function handleInput(e){
 
 window.addEventListener('keydown',e=>{
   if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();handleInput(null);}
-  if(gameState==='menu'&&(e.code==='ArrowLeft'||e.code==='ArrowRight')){e.preventDefault();charMode=charMode==='tanuki'?'fox':'tanuki';localStorage.setItem('gravRunnerChar',charMode);}
+  if(gameState==='menu'&&e.code==='ArrowLeft'){e.preventDefault();charMode='tanuki';localStorage.setItem('gravRunnerChar',charMode);}
+  if(gameState==='menu'&&e.code==='ArrowRight'){e.preventDefault();charMode='fox';localStorage.setItem('gravRunnerChar',charMode);}
 });
 canvas.addEventListener('pointerdown',e=>{e.preventDefault();handleInput(e);});
 canvas.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
