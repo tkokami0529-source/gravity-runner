@@ -567,36 +567,24 @@ function drawMenu() {
   drawScanlines();drawVignette();
 }
 
-const shareBtn={x:W/2-90,y:0,w:180,h:38};
-function shareToX(){
-  const s=Math.floor(score),isNew=s>=hiScore&&hiScore>0;
-  const charName=charMode==='fox'?'Fox':'Tanuki';
-  const text=`Gravity Runner ${s}pt${isNew?' NEW RECORD!':''}/${coinCount} coins! ${charName} Stage ${currentStage+1} ${STAGES[currentStage].name}. Can you beat my score?`;
-  window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}`,'_blank');
-}
-
 function drawGameOver() {
   ctx.fillStyle='rgba(0,0,8,0.7)';ctx.fillRect(0,0,W,H);
   const f=FONT;
-  ctx.fillStyle='rgba(10,5,25,0.85)';roundRect(W/2-180,H/2-140,360,340,12);ctx.fill();
-  ctx.strokeStyle='#ff336644';ctx.lineWidth=2;roundRect(W/2-180,H/2-140,360,340,12);ctx.stroke();
-  ctx.fillStyle='#ff3366';ctx.shadowColor='#ff3366';ctx.shadowBlur=20;ctx.font=`18px ${f}`;ctx.textAlign='center';ctx.fillText('GAME OVER',W/2,H/2-100);ctx.shadowBlur=0;
-  ctx.strokeStyle='#ff336633';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(W/2-100,H/2-82);ctx.lineTo(W/2+100,H/2-82);ctx.stroke();
+  ctx.fillStyle='rgba(10,5,25,0.85)';roundRect(W/2-180,H/2-120,360,280,12);ctx.fill();
+  ctx.strokeStyle='#ff336644';ctx.lineWidth=2;roundRect(W/2-180,H/2-120,360,280,12);ctx.stroke();
+  ctx.fillStyle='#ff3366';ctx.shadowColor='#ff3366';ctx.shadowBlur=20;ctx.font=`18px ${f}`;ctx.textAlign='center';ctx.fillText('GAME OVER',W/2,H/2-80);ctx.shadowBlur=0;
+  ctx.strokeStyle='#ff336633';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(W/2-100,H/2-62);ctx.lineTo(W/2+100,H/2-62);ctx.stroke();
 
-  ctx.fillStyle='#ffffff88';ctx.font=`7px ${f}`;ctx.fillText('SCORE',W/2,H/2-58);
-  ctx.fillStyle='#ffffff';ctx.font=`16px ${f}`;ctx.shadowColor='#00ffc8';ctx.shadowBlur=8;ctx.fillText(`${Math.floor(score)}`,W/2,H/2-38);ctx.shadowBlur=0;
-  ctx.fillStyle='#ffd700';ctx.font=`8px ${f}`;ctx.fillText(`COINS: ${coinCount}`,W/2,H/2-14);
-  ctx.fillStyle=STAGES[currentStage].line;ctx.font=`7px ${f}`;ctx.fillText(`STAGE ${currentStage+1} - ${STAGES[currentStage].name}`,W/2,H/2+6);
+  ctx.fillStyle='#ffffff88';ctx.font=`7px ${f}`;ctx.fillText('SCORE',W/2,H/2-38);
+  ctx.fillStyle='#ffffff';ctx.font=`16px ${f}`;ctx.shadowColor='#00ffc8';ctx.shadowBlur=8;ctx.fillText(`${Math.floor(score)}`,W/2,H/2-18);ctx.shadowBlur=0;
+  ctx.fillStyle='#ffd700';ctx.font=`8px ${f}`;ctx.fillText(`COINS: ${coinCount}`,W/2,H/2+6);
+  ctx.fillStyle=STAGES[currentStage].line;ctx.font=`7px ${f}`;ctx.fillText(`STAGE ${currentStage+1} - ${STAGES[currentStage].name}`,W/2,H/2+26);
 
-  if(Math.floor(score)>=hiScore&&hiScore>0){ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=12;ctx.font=`9px ${f}`;ctx.fillText('NEW RECORD!',W/2,H/2+30);ctx.shadowBlur=0;}
-  ctx.fillStyle='#ffffff44';ctx.font=`7px ${f}`;ctx.fillText(`HI-SCORE: ${hiScore}`,W/2,H/2+54);
-
-  const btnY=H/2+76;shareBtn.y=btnY;
-  ctx.fillStyle='#1a1a2e';ctx.strokeStyle='#1d9bf0';ctx.lineWidth=2;roundRect(shareBtn.x,btnY,shareBtn.w,shareBtn.h,19);ctx.fill();roundRect(shareBtn.x,btnY,shareBtn.w,shareBtn.h,19);ctx.stroke();
-  ctx.fillStyle='#1d9bf0';ctx.shadowColor='#1d9bf0';ctx.shadowBlur=6;ctx.font=`8px ${f}`;ctx.textAlign='center';ctx.fillText('POST TO X',W/2,btnY+24);ctx.shadowBlur=0;
+  if(Math.floor(score)>=hiScore&&hiScore>0){ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=12;ctx.font=`9px ${f}`;ctx.fillText('NEW RECORD!',W/2,H/2+50);ctx.shadowBlur=0;}
+  ctx.fillStyle='#ffffff44';ctx.font=`7px ${f}`;ctx.fillText(`HI-SCORE: ${hiScore}`,W/2,H/2+74);
 
   const blink=Math.sin(Date.now()*0.004)>0;
-  if(blink){ctx.fillStyle='#00ffc8';ctx.shadowColor='#00ffc8';ctx.shadowBlur=8;ctx.font=`9px ${f}`;ctx.fillText('TAP TO RETRY',W/2,btnY+68);ctx.shadowBlur=0;}
+  if(blink){ctx.fillStyle='#00ffc8';ctx.shadowColor='#00ffc8';ctx.shadowBlur=8;ctx.font=`9px ${f}`;ctx.fillText('TAP TO RETRY',W/2,H/2+120);ctx.shadowBlur=0;}
 }
 
 function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
@@ -618,8 +606,6 @@ function draw() {
 function gameLoop(){update();draw();requestAnimationFrame(gameLoop);}
 
 function getCanvasPos(e){const r=canvas.getBoundingClientRect();const sx=W/r.width,sy=H/r.height;const cx=e.clientX||(e.touches&&e.touches[0].clientX)||0;const cy=e.clientY||(e.touches&&e.touches[0].clientY)||0;return{x:(cx-r.left)*sx,y:(cy-r.top)*sy};}
-function isInShareBtn(px,py){return px>=shareBtn.x&&px<=shareBtn.x+shareBtn.w&&py>=shareBtn.y&&py<=shareBtn.y+shareBtn.h;}
-
 const charBtnLayout={btnW:130,btnH:30,btnGap:16,btnY:H/2+86};
 function hitCharBtn(px,py){
   const{btnW,btnH,btnGap,btnY}=charBtnLayout;
@@ -637,7 +623,7 @@ function handleInput(e){
     gameState='playing';initGame();
   }
   else if(gameState==='playing') playerJump();
-  else if(gameState==='gameover'){if(e){const pos=getCanvasPos(e);if(isInShareBtn(pos.x,pos.y)){shareToX();return;}}gameState='playing';initGame();}
+  else if(gameState==='gameover'){gameState='playing';initGame();}
 }
 
 window.addEventListener('keydown',e=>{
