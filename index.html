@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gravity Runner</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+  #gameContainer {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+  }
+  canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="c"></canvas>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const W = 480;
+const H = 640;
+canvas.width = W;
+canvas.height = H;
+
+const SURFACE_H = 36;
+const GROUND_Y = H - SURFACE_H;
+const CEILING_Y = SURFACE_H;
+const GRAVITY = 0.55;
+const JUMP_FORCE = 11.5;
+const PLAYER_W = 22;
+const PLAYER_H = 26;
+
+let gameState = 'menu';
+let player, obstacles, coins, particles, bgStars;
+let score, coinCount, combo, comboTimer;
+let baseSpeed, gameSpeed, speedMult;
+let frame, hiScore, shakeX, shakeY, shakeDur;
+let lastObstacleX, lastCoinX;
+
+// Fever mode
+const FEVER_COIN_THRESHOLD = 10;
+let feverActive, feverTimer, feverFlash, totalCoinsForFever;
+
+// Lives
+const LIFE_UP_COINS = 100;
+let lives, invincible, invincibleTimer, nextLifeUpAt;
+
+hiScore = parseInt(localStorage.getItem('gravRunnerHi') || '0');
+
+function initBgStars() {
+  bgStars = [];
+  for (let i = 0; i < 80; i++) {
+    bgStars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      size: Math.random() * 2 + 0.5,
+      speed: Math.random() * 0.5 + 0.2,
+      brightness: Math.random() * 0.5 + 0.3
+    });
+  }
+}
+
+function initGame() {
+  player = {
+    x: 70,
+    y: GROUND_Y - PLAYER_H,
+    vy: 0,
+    gravDir: 1,
+    grounded: true,
+    rotation: 0,
+    trail: [],
+    runFrame: 0
+  };
+  obstacles = [];
+  coins = [];
+  particles = [];
+  score = 0;
+  coinCount = 0;
+  combo = 0;
+  comboTimer = 0;
+  baseSpeed = 3.5;
+  gameSpeed = baseSpeed;
+  speedMult = 1;
+  frame = 0;
+  shakeX = 0;
+  shakeY = 0;
+  shakeDur = 0;
+  lastObstacleX = W + 200;
+  lastCoinX = W + 100;
+  feverActive = false;
+  feverTimer = 0;
+  feverFlash = 0;
+  totalCoinsForFever = 0;
+  lives = 3;
+  invincible = false;
+  invincibleTimer = 0;
+  nextLifeUpAt = LIFE_UP_COINS;
+}
+
+function shake(dur) {
+  shakeDur = dur;
+}
+
+function spawnParticles(x, y, color, count, spread) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * spread,
+      vy: (Math.random() - 0.5) * spread,
+      life: 1,
+      decay: Math.random() * 0.03 + 0.02,
+      size: Math.random() * 4 + 2,
+      color
+    });
+  }
+}
+
+function spawnObstacle() {
+  const types = ['ground', 'ceiling', 'both', 'ground', 'ceiling'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const obstW = Math.random() * 20 + 25;
+  const obstH = Math.random() * 30 + 35;
+
+  if (type === 'ground') {
+    obstacles.push({ x: W + 10, y: GROUND_Y - obstH, w: obstW, h: obstH, type: 'ground' });
+  } else if (type === 'ceiling') {
+    obstacles.push({ x: W + 10, y: CEILING_Y, w: obstW, h: obstH, type: 'ceiling' });
+  } else {
+    const gapSize = 240 + Math.random() * 50;
+    const maxRange = GROUND_Y - CEILING_Y - gapSize - 80;
+    if (maxRange < 10) return;
+    const gapY = CEILING_Y + 40 + Math.random() * maxRange;
+    const topH = gapY - CEILING_Y;
+    const botH = GROUND_Y - (gapY + gapSize);
+    if (topH < 15 || botH < 15) return;
+    obstacles.push({ x: W + 10, y: CEILING_Y, w: obstW, h: topH, type: 'ceiling' });
+    obstacles.push({ x: W + 10, y: gapY + gapSize, w: obstW, h: botH, type: 'ground' });
+  }
+}
+
+function spawnCoin() {
+  const midY = (CEILING_Y + GROUND_Y) / 2;
+  const range = (GROUND_Y - CEILING_Y) * 0.35;
+  const count = Math.floor(Math.random() * 3) + 1;
+  for (let i = 0; i < count; i++) {
+    coins.push({
+      x: W + 10 + i * 32,
+      y: midY + (Math.random() - 0.5) * range * 2,
+      size: 10,
+      bobOffset: Math.random() * Math.PI * 2,
+      collected: false
+    });
+  }
+}
+
+function startFever() {
+  feverActive = true;
+  feverTimer = 300; // ~5 seconds
+  feverFlash = 0;
+  totalCoinsForFever = 0;
+  shake(10);
+  spawnParticles(W / 2, H / 2, '#ffd700', 30, 10);
+  spawnParticles(W / 2, H / 2, '#ff00ff', 20, 8);
+}
+
+function spawnFeverCoins() {
+  const rows = 3;
+  const cols = 4;
+  const startX = W + 20;
+  const startY = CEILING_Y + 60;
+  const endY = GROUND_Y - 60;
+  const spacingX = 36;
+  const spacingY = (endY - startY) / (rows - 1);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      coins.push({
+        x: startX + c * spacingX,
+        y: startY + r * spacingY,
+        size: 10,
+        bobOffset: Math.random() * Math.PI * 2,
+        collected: false
+      });
+    }
+  }
+}
+
+function playerJump() {
+  if (player.grounded) {
+    player.vy = -JUMP_FORCE * player.gravDir;
+    player.grounded = false;
+    spawnParticles(player.x + PLAYER_W / 2, player.gravDir === 1 ? player.y + PLAYER_H : player.y, '#00ffc8', 5, 3);
+  } else {
+    player.gravDir *= -1;
+    player.vy = -JUMP_FORCE * player.gravDir * 0.4;
+    spawnParticles(player.x + PLAYER_W / 2, player.y + PLAYER_H / 2, '#ff00ff', 10, 5);
+    shake(6);
+  }
+}
+
+function rectCollide(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function circleRectCollide(cx, cy, cr, rx, ry, rw, rh) {
+  const dx = Math.abs(cx - (rx + rw / 2));
+  const dy = Math.abs(cy - (ry + rh / 2));
+  if (dx > rw / 2 + cr || dy > rh / 2 + cr) return false;
+  if (dx <= rw / 2 || dy <= rh / 2) return true;
+  const cornerDist = (dx - rw / 2) ** 2 + (dy - rh / 2) ** 2;
+  return cornerDist <= cr ** 2;
+}
+
+function update() {
+  if (gameState !== 'playing') return;
+
+  frame++;
+  speedMult = 1 + frame * 0.00012;
+  gameSpeed = baseSpeed * speedMult;
+
+  // Player physics
+  if (!player.grounded) {
+    player.vy += GRAVITY * player.gravDir;
+    player.y += player.vy;
+
+    if (player.gravDir === 1 && player.y >= GROUND_Y - PLAYER_H) {
+      player.y = GROUND_Y - PLAYER_H;
+      player.vy = 0;
+      player.grounded = true;
+    }
+    if (player.gravDir === -1 && player.y <= CEILING_Y) {
+      player.y = CEILING_Y;
+      player.vy = 0;
+      player.grounded = true;
+    }
+  }
+
+  // Rotation
+  const targetRot = player.gravDir === 1 ? 0 : Math.PI;
+  player.rotation += (targetRot - player.rotation) * 0.12;
+
+  // Run animation
+  player.runFrame += gameSpeed * 0.15;
+
+  // Trail
+  player.trail.push({ x: player.x + PLAYER_W / 2, y: player.y + PLAYER_H / 2, alpha: 0.6 });
+  if (player.trail.length > 12) player.trail.shift();
+  player.trail.forEach(t => t.alpha *= 0.82);
+
+  // Score
+  score += gameSpeed * 0.1;
+
+  // Combo timer
+  if (combo > 0) {
+    comboTimer -= 1;
+    if (comboTimer <= 0) combo = 0;
+  }
+
+  // Fever mode update
+  if (feverActive) {
+    feverTimer--;
+    feverFlash += 0.15;
+    if (feverTimer <= 0) {
+      feverActive = false;
+    }
+    // Spawn fever coins frequently, no obstacles
+    if (frame % 20 === 0) {
+      spawnFeverCoins();
+    }
+    // Rainbow particles from edges
+    if (frame % 4 === 0) {
+      const colors = ['#ffd700', '#ff00ff', '#00ffc8', '#ff3366', '#66ffee'];
+      spawnParticles(Math.random() * W, Math.random() < 0.5 ? CEILING_Y : GROUND_Y,
+        colors[Math.floor(Math.random() * colors.length)], 2, 3);
+    }
+  }
+
+  // Spawn obstacles (not during fever)
+  if (!feverActive) {
+    const minGap = Math.max(160, 260 - frame * 0.02);
+    const furthestObst = obstacles.length > 0 ? Math.max(...obstacles.map(o => o.x + o.w)) : 0;
+    if (furthestObst < W - minGap || obstacles.length === 0) {
+      if (frame > 30 && Math.random() < 0.6) spawnObstacle();
+      lastObstacleX = W;
+    }
+  }
+
+  // Spawn coins (normal mode)
+  if (!feverActive && frame % 70 === 0 && Math.random() < 0.6) {
+    spawnCoin();
+  }
+
+  // Update obstacles
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    obstacles[i].x -= gameSpeed;
+    if (obstacles[i].x + obstacles[i].w < -10) {
+      obstacles.splice(i, 1);
+    }
+  }
+
+  // Update coins
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    c.x -= gameSpeed;
+    if (c.x < -20) {
+      coins.splice(i, 1);
+      continue;
+    }
+    if (!c.collected) {
+      const bobY = c.y + Math.sin(frame * 0.06 + c.bobOffset) * 6;
+      const px = player.x + PLAYER_W / 2;
+      const py = player.y + PLAYER_H / 2;
+      const dist = Math.hypot(px - c.x, py - bobY);
+      if (dist < c.size + 14) {
+        c.collected = true;
+        coinCount++;
+        combo++;
+        comboTimer = 90;
+        totalCoinsForFever++;
+        const bonus = combo >= 5 ? 3 : combo >= 3 ? 2 : 1;
+        const feverMult = feverActive ? 2 : 1;
+        score += 10 * bonus * feverMult;
+        spawnParticles(c.x, bobY, '#ffd700', 8, 4);
+        coins.splice(i, 1);
+        // Life up every 100 coins
+        if (coinCount >= nextLifeUpAt) {
+          lives++;
+          nextLifeUpAt += LIFE_UP_COINS;
+          spawnParticles(player.x + PLAYER_W / 2, player.y + PLAYER_H / 2, '#00ff66', 20, 6);
+          shake(8);
+        }
+        // Trigger fever
+        if (!feverActive && totalCoinsForFever >= FEVER_COIN_THRESHOLD) {
+          startFever();
+        }
+      }
+    }
+  }
+
+  // Clear obstacles when fever starts
+  if (feverActive && obstacles.length > 0) {
+    obstacles.forEach(o => {
+      spawnParticles(o.x + o.w / 2, o.y + o.h / 2, '#ff336688', 5, 4);
+    });
+    obstacles = [];
+  }
+
+  // Invincibility timer
+  if (invincible) {
+    invincibleTimer--;
+    if (invincibleTimer <= 0) {
+      invincible = false;
+    }
+  }
+
+  // Collision with obstacles
+  const pb = { x: player.x + 3, y: player.y + 3, w: PLAYER_W - 6, h: PLAYER_H - 6 };
+  for (const o of obstacles) {
+    if (rectCollide(pb, o)) {
+      if (invincible) continue;
+      lives--;
+      shake(15);
+      spawnParticles(player.x + PLAYER_W / 2, player.y + PLAYER_H / 2, '#ff3333', 25, 7);
+      spawnParticles(player.x + PLAYER_W / 2, player.y + PLAYER_H / 2, '#ff9900', 15, 5);
+      if (lives <= 0) {
+        gameState = 'gameover';
+        if (Math.floor(score) > hiScore) {
+          hiScore = Math.floor(score);
+          localStorage.setItem('gravRunnerHi', hiScore);
+        }
+        return;
+      }
+      // Still alive: become invincible briefly
+      invincible = true;
+      invincibleTimer = 90; // ~1.5 seconds
+      break;
+    }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Background stars
+  bgStars.forEach(s => {
+    s.x -= s.speed * speedMult;
+    if (s.x < 0) {
+      s.x = W;
+      s.y = Math.random() * H;
+    }
+  });
+
+  // Shake
+  if (shakeDur > 0) {
+    shakeDur--;
+    shakeX = (Math.random() - 0.5) * shakeDur * 0.8;
+    shakeY = (Math.random() - 0.5) * shakeDur * 0.8;
+  } else {
+    shakeX = 0;
+    shakeY = 0;
+  }
+}
+
+function drawSurface(y, isGround) {
+  const grad = ctx.createLinearGradient(0, y, 0, isGround ? y + SURFACE_H : y - SURFACE_H);
+  if (feverActive) {
+    const pulse = Math.sin(feverFlash) * 0.3 + 0.7;
+    grad.addColorStop(0, `rgba(255, 0, 255, ${pulse * 0.5})`);
+    grad.addColorStop(1, '#0a0a1a');
+  } else {
+    grad.addColorStop(0, '#1a3a5c');
+    grad.addColorStop(1, '#0a0a1a');
+  }
+  ctx.fillStyle = grad;
+  if (isGround) {
+    ctx.fillRect(0, y, W, SURFACE_H);
+  } else {
+    ctx.fillRect(0, 0, W, y);
+  }
+  ctx.fillStyle = feverActive ? '#ff00ff88' : '#00ffc855';
+  ctx.fillRect(0, y, W, 1);
+}
+
+function drawPlayer() {
+  const p = player;
+  const cx = p.x + PLAYER_W / 2;
+  const cy = p.y + PLAYER_H / 2;
+
+  // Skip drawing every other frame when invincible (blink effect)
+  if (invincible && Math.floor(frame / 3) % 2 === 0) return;
+
+  // Trail
+  p.trail.forEach(t => {
+    ctx.globalAlpha = t.alpha * 0.4;
+    ctx.fillStyle = '#00ffc8';
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(p.rotation);
+
+  // Body
+  ctx.fillStyle = '#00ffc8';
+  ctx.shadowColor = '#00ffc8';
+  ctx.shadowBlur = 12;
+  roundRect(-PLAYER_W / 2, -PLAYER_H / 2, PLAYER_W, PLAYER_H, 4);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Visor
+  ctx.fillStyle = '#0a2a3a';
+  roundRect(2, -PLAYER_H / 2 + 5, PLAYER_W / 2 - 2, 10, 2);
+  ctx.fill();
+
+  // Visor glow
+  ctx.fillStyle = '#66ffee';
+  ctx.fillRect(4, -PLAYER_H / 2 + 7, 4, 3);
+  ctx.fillRect(10, -PLAYER_H / 2 + 7, 2, 3);
+
+  // Legs animation
+  if (p.grounded) {
+    const legAnim = Math.sin(p.runFrame) * 3;
+    ctx.fillStyle = '#009977';
+    ctx.fillRect(-PLAYER_W / 2 + 3, PLAYER_H / 2 - 4 + legAnim, 5, 4);
+    ctx.fillRect(PLAYER_W / 2 - 8, PLAYER_H / 2 - 4 - legAnim, 5, 4);
+  }
+
+  ctx.restore();
+}
+
+function drawObstacle(o) {
+  const grad = ctx.createLinearGradient(o.x, o.y, o.x, o.y + o.h);
+  if (o.type === 'ground') {
+    grad.addColorStop(0, '#ff3366');
+    grad.addColorStop(1, '#991133');
+  } else {
+    grad.addColorStop(0, '#991133');
+    grad.addColorStop(1, '#ff3366');
+  }
+  ctx.fillStyle = grad;
+  ctx.shadowColor = '#ff336688';
+  ctx.shadowBlur = 8;
+  roundRect(o.x, o.y, o.w, o.h, 3);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Warning stripe
+  ctx.fillStyle = '#ff336633';
+  const stripeW = 4;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(o.x, o.y, o.w, o.h);
+  ctx.clip();
+  for (let s = 0; s < o.h + o.w; s += stripeW * 3) {
+    ctx.beginPath();
+    ctx.moveTo(o.x + s, o.y);
+    ctx.lineTo(o.x + s + stripeW, o.y);
+    ctx.lineTo(o.x + s - o.h + stripeW, o.y + o.h);
+    ctx.lineTo(o.x + s - o.h, o.y + o.h);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCoin(c) {
+  const bobY = c.y + Math.sin(frame * 0.06 + c.bobOffset) * 6;
+  const scaleX = Math.abs(Math.cos(frame * 0.04 + c.bobOffset));
+
+  ctx.save();
+  ctx.translate(c.x, bobY);
+  ctx.scale(Math.max(scaleX, 0.3), 1);
+
+  ctx.fillStyle = '#ffd700';
+  ctx.shadowColor = '#ffd700';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(0, 0, c.size, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#ffee55';
+  ctx.beginPath();
+  ctx.arc(-2, -2, c.size * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawUI() {
+  // Score
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 18px "Courier New", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`SCORE ${Math.floor(score)}`, 12, 24);
+
+  // Lives
+  ctx.fillStyle = '#ff3366';
+  ctx.font = 'bold 18px "Courier New", monospace';
+  const livesStr = '♥'.repeat(Math.max(lives, 0));
+  ctx.fillText(livesStr, W / 2 - 30, 24);
+
+  // Coins
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 18px "Courier New", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`★ ${coinCount}`, W - 90, 24);
+
+  // Combo
+  if (combo >= 2) {
+    ctx.fillStyle = combo >= 5 ? '#ff00ff' : '#ffd700';
+    ctx.font = `bold ${14 + combo}px "Courier New", monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`× ${combo} COMBO!`, W / 2, H / 2 - 60);
+  }
+
+  // Fever gauge
+  const gaugeX = 12;
+  const gaugeY = H - 28;
+  const gaugeW = 120;
+  const gaugeH = 8;
+  ctx.fillStyle = '#ffffff22';
+  roundRect(gaugeX, gaugeY, gaugeW, gaugeH, 4);
+  ctx.fill();
+  const feverPct = feverActive ? feverTimer / 300 : Math.min(totalCoinsForFever / FEVER_COIN_THRESHOLD, 1);
+  if (feverPct > 0) {
+    const fGrad = ctx.createLinearGradient(gaugeX, 0, gaugeX + gaugeW, 0);
+    if (feverActive) {
+      fGrad.addColorStop(0, '#ff00ff');
+      fGrad.addColorStop(0.5, '#ffd700');
+      fGrad.addColorStop(1, '#ff00ff');
+    } else {
+      fGrad.addColorStop(0, '#ffd700');
+      fGrad.addColorStop(1, '#ffaa00');
+    }
+    ctx.fillStyle = fGrad;
+    roundRect(gaugeX, gaugeY, gaugeW * feverPct, gaugeH, 4);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#ffffff88';
+  ctx.font = '10px "Courier New", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(feverActive ? 'FEVER!' : `FEVER ${totalCoinsForFever}/${FEVER_COIN_THRESHOLD}`, gaugeX, gaugeY - 4);
+
+  // Fever banner
+  if (feverActive) {
+    const bannerAlpha = 0.6 + Math.sin(feverFlash) * 0.4;
+    ctx.globalAlpha = bannerAlpha;
+    ctx.fillStyle = '#ff00ff';
+    ctx.shadowColor = '#ff00ff';
+    ctx.shadowBlur = 20;
+    ctx.font = 'bold 28px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('FEVER TIME!', W / 2, 80);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 14px "Courier New", monospace';
+    ctx.fillText('COIN x2', W / 2, 100);
+  }
+
+  // Speed indicator
+  const speedPct = Math.min((speedMult - 1) * 10, 1);
+  ctx.fillStyle = '#ffffff33';
+  ctx.fillRect(12, H - 14, 100, 4);
+  const spdGrad = ctx.createLinearGradient(12, 0, 112, 0);
+  spdGrad.addColorStop(0, '#00ffc8');
+  spdGrad.addColorStop(1, '#ff3366');
+  ctx.fillStyle = spdGrad;
+  ctx.fillRect(12, H - 14, 100 * speedPct, 4);
+
+  // Gravity indicator
+  const arrowY = 50;
+  const arrowX = W - 30;
+  ctx.save();
+  ctx.translate(arrowX, arrowY);
+  ctx.rotate(player.gravDir === 1 ? 0 : Math.PI);
+  ctx.fillStyle = player.gravDir === 1 ? '#00ffc866' : '#ff00ff88';
+  ctx.beginPath();
+  ctx.moveTo(0, -8);
+  ctx.lineTo(6, 4);
+  ctx.lineTo(-6, 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawMenu() {
+  // Background
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, W, H);
+
+  bgStars.forEach(s => {
+    ctx.fillStyle = `rgba(255,255,255,${s.brightness})`;
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  });
+
+  // Title
+  ctx.fillStyle = '#00ffc8';
+  ctx.shadowColor = '#00ffc8';
+  ctx.shadowBlur = 20;
+  ctx.font = 'bold 42px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('GRAVITY', W / 2, H / 2 - 100);
+  ctx.fillText('RUNNER', W / 2, H / 2 - 55);
+  ctx.shadowBlur = 0;
+
+  // Instructions
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '15px "Courier New", monospace';
+  ctx.fillText('タップ / スペース → ジャンプ', W / 2, H / 2 + 10);
+  ctx.fillStyle = '#ff00ff';
+  ctx.fillText('空中でもう一度 → 重力反転！', W / 2, H / 2 + 35);
+
+  ctx.fillStyle = '#ffd700';
+  ctx.fillText(`コイン${FEVER_COIN_THRESHOLD}枚 → FEVER TIME!`, W / 2, H / 2 + 60);
+
+  // Start prompt
+  const blink = Math.sin(Date.now() * 0.004) > 0;
+  if (blink) {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 18px "Courier New", monospace';
+    ctx.fillText('TAP TO START', W / 2, H / 2 + 120);
+  }
+
+  // High score
+  if (hiScore > 0) {
+    ctx.fillStyle = '#ffffff88';
+    ctx.font = '14px "Courier New", monospace';
+    ctx.fillText(`HI-SCORE: ${hiScore}`, W / 2, H / 2 + 165);
+  }
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#ff3366';
+  ctx.shadowColor = '#ff3366';
+  ctx.shadowBlur = 15;
+  ctx.font = 'bold 36px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('GAME OVER', W / 2, H / 2 - 60);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '20px "Courier New", monospace';
+  ctx.fillText(`SCORE: ${Math.floor(score)}`, W / 2, H / 2 - 10);
+  ctx.fillText(`COINS: ${coinCount}`, W / 2, H / 2 + 20);
+
+  if (Math.floor(score) >= hiScore && hiScore > 0) {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillText('★ NEW HIGH SCORE! ★', W / 2, H / 2 + 55);
+  }
+
+  ctx.fillStyle = '#ffffff88';
+  ctx.font = '14px "Courier New", monospace';
+  ctx.fillText(`HI-SCORE: ${hiScore}`, W / 2, H / 2 + 85);
+
+  const blink = Math.sin(Date.now() * 0.004) > 0;
+  if (blink) {
+    ctx.fillStyle = '#00ffc8';
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillText('TAP TO RETRY', W / 2, H / 2 + 130);
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (gameState === 'menu') {
+    drawMenu();
+    return;
+  }
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, W, H);
+
+  bgStars.forEach(s => {
+    ctx.fillStyle = `rgba(255,255,255,${s.brightness})`;
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  });
+
+  // Surfaces
+  drawSurface(GROUND_Y, true);
+  drawSurface(CEILING_Y, false);
+
+  // Obstacles
+  obstacles.forEach(drawObstacle);
+
+  // Coins
+  coins.forEach(c => { if (!c.collected) drawCoin(c); });
+
+  // Player
+  drawPlayer();
+
+  // Particles
+  drawParticles();
+
+  ctx.restore();
+
+  // UI
+  drawUI();
+
+  if (gameState === 'gameover') {
+    drawGameOver();
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+function handleInput() {
+  if (gameState === 'menu') {
+    gameState = 'playing';
+    initGame();
+  } else if (gameState === 'playing') {
+    playerJump();
+  } else if (gameState === 'gameover') {
+    gameState = 'playing';
+    initGame();
+  }
+}
+
+// Input handlers
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  handleInput();
+});
+
+// Prevent scroll on touch
+canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+
+// Init
+initBgStars();
+initGame();
+gameLoop();
+</script>
+</body>
+</html>
