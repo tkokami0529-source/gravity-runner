@@ -466,30 +466,143 @@ function drawPlayer() {
   ctx.translate(cx, cy);
   ctx.rotate(p.rotation);
 
-  // Body
+  // Tail (behind body)
+  const tailWag = Math.sin(p.runFrame * 1.5) * 0.3;
+  ctx.save();
+  ctx.translate(-PLAYER_W / 2 - 2, 2);
+  ctx.rotate(tailWag - 0.5);
+  ctx.fillStyle = '#009977';
+  ctx.beginPath();
+  ctx.ellipse(-5, 0, 5, 8, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  // Tail stripes
   ctx.fillStyle = '#00ffc8';
+  ctx.beginPath();
+  ctx.ellipse(-5, -3, 3, 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Body (round tanuki shape)
+  ctx.fillStyle = '#00ddb0';
   ctx.shadowColor = '#00ffc8';
   ctx.shadowBlur = 12;
-  roundRect(-PLAYER_W / 2, -PLAYER_H / 2, PLAYER_W, PLAYER_H, 4);
+  ctx.beginPath();
+  ctx.ellipse(0, 2, PLAYER_W / 2, PLAYER_H / 2 - 2, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Visor
-  ctx.fillStyle = '#0a2a3a';
-  roundRect(2, -PLAYER_H / 2 + 5, PLAYER_W / 2 - 2, 10, 2);
+  // Belly
+  ctx.fillStyle = '#66ffe0';
+  ctx.beginPath();
+  ctx.ellipse(1, 5, 7, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Visor glow
+  // Head (slightly larger circle on top)
+  ctx.fillStyle = '#00ffc8';
+  ctx.beginPath();
+  ctx.arc(1, -8, 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ears
+  ctx.fillStyle = '#00ffc8';
+  ctx.beginPath();
+  ctx.moveTo(-7, -15);
+  ctx.lineTo(-11, -22);
+  ctx.lineTo(-2, -17);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(7, -15);
+  ctx.lineTo(11, -22);
+  ctx.lineTo(2, -17);
+  ctx.closePath();
+  ctx.fill();
+  // Inner ears
+  ctx.fillStyle = '#009977';
+  ctx.beginPath();
+  ctx.moveTo(-7, -16);
+  ctx.lineTo(-9, -20);
+  ctx.lineTo(-4, -17);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(7, -16);
+  ctx.lineTo(9, -20);
+  ctx.lineTo(4, -17);
+  ctx.closePath();
+  ctx.fill();
+
+  // Eye patches (dark tanuki markings)
+  ctx.fillStyle = '#006655';
+  ctx.beginPath();
+  ctx.ellipse(-5, -9, 5, 4, -0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(6, -9, 5, 4, 0.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes (white + pupil)
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(-4, -9, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(6, -9, 3, 0, Math.PI * 2);
+  ctx.fill();
+  // Pupils
+  ctx.fillStyle = '#0a2a3a';
+  ctx.beginPath();
+  ctx.arc(-3, -9, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(7, -9, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  // Eye shine
   ctx.fillStyle = '#66ffee';
-  ctx.fillRect(4, -PLAYER_H / 2 + 7, 4, 3);
-  ctx.fillRect(10, -PLAYER_H / 2 + 7, 2, 3);
+  ctx.beginPath();
+  ctx.arc(-4, -10, 0.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(6, -10, 0.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Nose
+  ctx.fillStyle = '#006655';
+  ctx.beginPath();
+  ctx.arc(1, -5, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mouth
+  ctx.strokeStyle = '#006655';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(1, -3);
+  ctx.lineTo(-1, -1);
+  ctx.moveTo(1, -3);
+  ctx.lineTo(3, -1);
+  ctx.stroke();
 
   // Legs animation
   if (p.grounded) {
     const legAnim = Math.sin(p.runFrame) * 3;
     ctx.fillStyle = '#009977';
-    ctx.fillRect(-PLAYER_W / 2 + 3, PLAYER_H / 2 - 4 + legAnim, 5, 4);
-    ctx.fillRect(PLAYER_W / 2 - 8, PLAYER_H / 2 - 4 - legAnim, 5, 4);
+    // Front legs
+    ctx.beginPath();
+    ctx.ellipse(6, PLAYER_H / 2 - 3 - legAnim, 3, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Back legs
+    ctx.beginPath();
+    ctx.ellipse(-5, PLAYER_H / 2 - 3 + legAnim, 3, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Tucked legs in air
+    ctx.fillStyle = '#009977';
+    ctx.beginPath();
+    ctx.ellipse(5, PLAYER_H / 2 - 4, 3, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-4, PLAYER_H / 2 - 4, 3, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   ctx.restore();
@@ -707,6 +820,18 @@ function drawMenu() {
   }
 }
 
+// X share button area
+const shareBtn = { x: W / 2 - 80, y: 0, w: 160, h: 36 };
+
+function shareToX() {
+  const s = Math.floor(score);
+  const isNew = s >= hiScore && hiScore > 0;
+  const text = `Gravity Runner で ${s} 点${isNew ? ' (ハイスコア更新!)' : ''}を記録しました！コイン${coinCount}枚獲得🪙 重力を操るたぬきランゲーム、挑戦してみて！`;
+  const url = 'https://tkokami0529-source.github.io/gravity-runner/';
+  const shareUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+  window.open(shareUrl, '_blank');
+}
+
 function drawGameOver() {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
   ctx.fillRect(0, 0, W, H);
@@ -716,29 +841,44 @@ function drawGameOver() {
   ctx.shadowBlur = 15;
   ctx.font = 'bold 36px "Courier New", monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('GAME OVER', W / 2, H / 2 - 60);
+  ctx.fillText('GAME OVER', W / 2, H / 2 - 80);
   ctx.shadowBlur = 0;
 
   ctx.fillStyle = '#ffffff';
   ctx.font = '20px "Courier New", monospace';
-  ctx.fillText(`SCORE: ${Math.floor(score)}`, W / 2, H / 2 - 10);
-  ctx.fillText(`COINS: ${coinCount}`, W / 2, H / 2 + 20);
+  ctx.fillText(`SCORE: ${Math.floor(score)}`, W / 2, H / 2 - 30);
+  ctx.fillText(`COINS: ${coinCount}`, W / 2, H / 2);
 
   if (Math.floor(score) >= hiScore && hiScore > 0) {
     ctx.fillStyle = '#ffd700';
     ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillText('★ NEW HIGH SCORE! ★', W / 2, H / 2 + 55);
+    ctx.fillText('★ NEW HIGH SCORE! ★', W / 2, H / 2 + 35);
   }
 
   ctx.fillStyle = '#ffffff88';
   ctx.font = '14px "Courier New", monospace';
-  ctx.fillText(`HI-SCORE: ${hiScore}`, W / 2, H / 2 + 85);
+  ctx.fillText(`HI-SCORE: ${hiScore}`, W / 2, H / 2 + 65);
 
+  // X share button
+  const btnY = H / 2 + 90;
+  shareBtn.y = btnY;
+  ctx.fillStyle = '#1d9bf0';
+  ctx.shadowColor = '#1d9bf0';
+  ctx.shadowBlur = 10;
+  roundRect(shareBtn.x, btnY, shareBtn.w, shareBtn.h, 18);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 15px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('𝕏 スコアを共有', W / 2, btnY + 23);
+
+  // Retry prompt
   const blink = Math.sin(Date.now() * 0.004) > 0;
   if (blink) {
     ctx.fillStyle = '#00ffc8';
     ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillText('TAP TO RETRY', W / 2, H / 2 + 130);
+    ctx.fillText('TAP TO RETRY', W / 2, btnY + 75);
   }
 }
 
@@ -808,13 +948,37 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
-function handleInput() {
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const clientX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+  const clientY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY
+  };
+}
+
+function isInShareBtn(px, py) {
+  return px >= shareBtn.x && px <= shareBtn.x + shareBtn.w &&
+         py >= shareBtn.y && py <= shareBtn.y + shareBtn.h;
+}
+
+function handleInput(e) {
   if (gameState === 'menu') {
     gameState = 'playing';
     initGame();
   } else if (gameState === 'playing') {
     playerJump();
   } else if (gameState === 'gameover') {
+    if (e) {
+      const pos = getCanvasPos(e);
+      if (isInShareBtn(pos.x, pos.y)) {
+        shareToX();
+        return;
+      }
+    }
     gameState = 'playing';
     initGame();
   }
@@ -824,13 +988,13 @@ function handleInput() {
 window.addEventListener('keydown', e => {
   if (e.code === 'Space' || e.code === 'ArrowUp') {
     e.preventDefault();
-    handleInput();
+    handleInput(null);
   }
 });
 
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
-  handleInput();
+  handleInput(e);
 });
 
 // Prevent scroll on touch
