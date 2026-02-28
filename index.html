@@ -572,7 +572,7 @@ function shareToX(){
   const s=Math.floor(score),isNew=s>=hiScore&&hiScore>0;
   const charName=charMode==='fox'?'Fox':'Tanuki';
   const text=`Gravity Runner ${s}pt${isNew?' NEW RECORD!':''}/${coinCount} coins! ${charName} Stage ${currentStage+1} ${STAGES[currentStage].name}. Can you beat my score?`;
-  window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent('https://tkokami0529-source.github.io/gravity-runner/')}`,'_blank');
+  window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}`,'_blank');
 }
 
 function drawGameOver() {
